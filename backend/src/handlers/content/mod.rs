@@ -268,7 +268,7 @@ pub async fn get_summary(
 }
 
 async fn get_summary_audio_cache_info(
-    tts: &crate::services::PollyTtsService,
+    tts: &crate::services::TextToSpeechService,
     video_id: &str,
     summary_content: &str,
 ) -> Result<(String, String, String), (StatusCode, String)> {
@@ -320,7 +320,7 @@ pub async fn get_summary_audio(
 
     let tts = state.tts.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
-        "Polly TTS is not configured".to_string(),
+        "Text-to-Speech is not configured".to_string(),
     ))?;
 
     let (key, content_type, _) =
@@ -378,7 +378,7 @@ pub async fn generate_summary_audio(
 
     let tts = state.tts.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
-        "Polly TTS is not configured".to_string(),
+        "Text-to-Speech is not configured".to_string(),
     ))?;
 
     let (key, content_type, tts_text) =
@@ -449,7 +449,7 @@ pub async fn get_summary_audio_debug(
 
     let tts = state.tts.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
-        "Polly TTS is not configured".to_string(),
+        "Text-to-Speech is not configured".to_string(),
     ))?;
 
     let (key, _, tts_text) = get_summary_audio_cache_info(tts, &video_id, &summary.content).await?;

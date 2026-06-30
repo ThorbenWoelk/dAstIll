@@ -42,7 +42,7 @@ fn validate_cloud_auth(url: &str, api_key: &Option<String>) -> Result<(), String
 }
 
 fn default_search_semantic_enabled() -> bool {
-    cfg!(debug_assertions)
+    false
 }
 
 fn required_env(key: &str) -> Result<String, String> {
@@ -186,11 +186,12 @@ pub struct DatabricksRuntimeConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PollyTtsRuntimeConfig {
-    pub voice_id: String,
-    pub engine: String,
-    pub output_format: String,
-    pub sample_rate: String,
+pub struct GoogleTtsRuntimeConfig {
+    pub voice_name: String,
+    pub language_code: String,
+    pub model_name: Option<String>,
+    pub audio_encoding: String,
+    pub sample_rate_hertz: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -334,21 +335,30 @@ impl DatabricksRuntimeConfig {
     }
 }
 
-impl PollyTtsRuntimeConfig {
+impl GoogleTtsRuntimeConfig {
     pub fn from_env() -> Result<Option<Self>, String> {
-        let enabled = optional_bool_env("POLLY_TTS_ENABLED").unwrap_or(false);
+        let enabled = optional_bool_env("GOOGLE_TTS_ENABLED").unwrap_or(false);
         if !enabled {
             return Ok(None);
         }
 
+        let sample_rate_hertz = optional_env("GOOGLE_TTS_SAMPLE_RATE_HERTZ")
+            .unwrap_or_else(|| "16000".to_string())
+            .parse::<i32>()
+            .map_err(|_| "GOOGLE_TTS_SAMPLE_RATE_HERTZ must be an integer".to_string())?;
+        if sample_rate_hertz <= 0 {
+            return Err("GOOGLE_TTS_SAMPLE_RATE_HERTZ must be positive".to_string());
+        }
+
         Ok(Some(Self {
-            voice_id: optional_env("POLLY_TTS_VOICE_ID").unwrap_or_else(|| "Joanna".to_string()),
-            engine: optional_env("POLLY_TTS_ENGINE").unwrap_or_else(|| "neural".to_string()),
-            output_format: optional_env("POLLY_TTS_OUTPUT_FORMAT")
-                // `wav` maps to Polly `pcm` and then we wrap the result into a WAV container.
-                .unwrap_or_else(|| "wav".to_string()),
-            sample_rate: optional_env("POLLY_TTS_SAMPLE_RATE")
-                .unwrap_or_else(|| "16000".to_string()),
+            voice_name: optional_env("GOOGLE_TTS_VOICE_NAME")
+                .unwrap_or_else(|| "en-US-Wavenet-D".to_string()),
+            language_code: optional_env("GOOGLE_TTS_LANGUAGE_CODE")
+                .unwrap_or_else(|| "en-US".to_string()),
+            model_name: optional_env("GOOGLE_TTS_MODEL_NAME"),
+            audio_encoding: optional_env("GOOGLE_TTS_AUDIO_ENCODING")
+                .unwrap_or_else(|| "LINEAR16".to_string()),
+            sample_rate_hertz,
         }))
     }
 }

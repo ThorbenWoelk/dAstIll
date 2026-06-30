@@ -2,21 +2,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-mod aws_clients;
 mod settings;
 mod youtube_validation;
 
-use aws_clients::build_aws_clients;
 use settings::load_runtime_config;
 use youtube_validation::validate_youtube_api_key;
 
 use crate::config::SecurityRuntimeConfig;
+use crate::object_store::{GcsObjectStore, ObjectStore, memory::MemoryObjectStore};
 use crate::search::{FtsIndex, SearchProgress, SearchService};
 use crate::security::rate_limiter;
 use crate::services::{
     ChatService, Cooldown, DatabricksSqlService, OllamaCore, OpenAlexPlannerService,
-    OpenAlexService, PodcastFeedService, PollyTtsService, SummarizerService,
-    SummaryEvaluatorService, TranscriptService, UserActivity, WebsiteService, YouTubeService,
+    OpenAlexService, PodcastFeedService, SummarizerService, SummaryEvaluatorService,
+    TextToSpeechService, TranscriptService, UserActivity, WebsiteService, YouTubeService,
     build_http_client,
 };
 use crate::state::AppState;
@@ -29,16 +28,18 @@ pub struct Runtime {
 
 pub async fn build_runtime(port: u16) -> anyhow::Result<Runtime> {
     let config = load_runtime_config()?;
-    let aws = build_aws_clients(&config.aws_region).await?;
-    let local_libsql = crate::db::initialize_local_libsql_store(
-        aws.s3,
-        aws.s3v,
-        config.data_bucket,
-        config.vector_bucket,
-        config.vector_index,
-        port,
-    )
-    .await?;
+    let objects: Arc<dyn ObjectStore> = match config.object_store_provider.as_str() {
+        "memory" => Arc::new(MemoryObjectStore::new()),
+        _ => Arc::new(
+            GcsObjectStore::from_adc(
+                config
+                    .gcs_data_bucket
+                    .expect("GCS_DATA_BUCKET validated for gcs provider"),
+            )
+            .await?,
+        ),
+    };
+    let local_libsql = crate::db::initialize_local_libsql_store(objects, port).await?;
     let store = local_libsql.store;
     let read_cache = local_libsql.read_cache;
     let fts_dir = local_libsql.fts_dir;
@@ -151,15 +152,19 @@ pub async fn build_runtime(port: u16) -> anyhow::Result<Runtime> {
             .await
             .expect("failed to create shared libSQL FTS index"),
     );
-    let polly_tts = config.polly_tts.map(|cfg| {
-        Arc::new(PollyTtsService::new(
-            aws_sdk_polly::Client::new(&aws.config),
-            cfg.voice_id,
-            cfg.engine,
-            cfg.output_format,
-            cfg.sample_rate,
-        ))
-    });
+    let tts = match config.google_tts {
+        Some(cfg) => Some(Arc::new(
+            TextToSpeechService::from_adc(
+                cfg.voice_name,
+                cfg.language_code,
+                cfg.model_name,
+                cfg.audio_encoding,
+                cfg.sample_rate_hertz,
+            )
+            .await?,
+        )),
+        None => None,
+    };
 
     let user_activity = Arc::new(UserActivity::from_env());
     let security = config.security.clone();
@@ -178,7 +183,7 @@ pub async fn build_runtime(port: u16) -> anyhow::Result<Runtime> {
         podcast_feed,
         website,
         transcript,
-        tts: polly_tts,
+        tts,
         summarizer,
         summary_evaluator,
         search,

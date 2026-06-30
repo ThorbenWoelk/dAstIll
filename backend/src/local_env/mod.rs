@@ -17,40 +17,6 @@ fn shared_local_env_path() -> Option<PathBuf> {
     shared_local_dir().map(|dir| dir.join("backend.env"))
 }
 
-fn shared_local_aws_credentials_path() -> Option<PathBuf> {
-    shared_local_dir().map(|dir| dir.join("aws").join("credentials"))
-}
-
-fn shared_local_aws_config_path() -> Option<PathBuf> {
-    shared_local_dir().map(|dir| dir.join("aws").join("config"))
-}
-
-fn set_env_var_if_missing_and_file_exists(key: &str, path: Option<PathBuf>) {
-    if env::var_os(key).is_some() {
-        return;
-    }
-
-    let Some(path) = path else {
-        return;
-    };
-    if !path.is_file() {
-        return;
-    }
-
-    unsafe { env::set_var(key, path) };
-}
-
-fn apply_shared_local_aws_file_defaults() {
-    // Permanent local AWS credentials should live outside repo-owned .env files.
-    // When the shared machine-local files exist, prefer them automatically unless
-    // the shell or dotenv files already set explicit AWS SDK paths.
-    set_env_var_if_missing_and_file_exists(
-        "AWS_SHARED_CREDENTIALS_FILE",
-        shared_local_aws_credentials_path(),
-    );
-    set_env_var_if_missing_and_file_exists("AWS_CONFIG_FILE", shared_local_aws_config_path());
-}
-
 fn load_dotenv_file(path: &Path, shell_env_keys: &HashSet<OsString>) {
     let Ok(content) = std::fs::read_to_string(path) else {
         return;
@@ -82,7 +48,6 @@ pub fn load_envs() {
     }
 
     load_dotenv_file(Path::new(".env"), &shell_env_keys);
-    apply_shared_local_aws_file_defaults();
 }
 
 pub fn clear_missing_google_application_credentials() -> bool {

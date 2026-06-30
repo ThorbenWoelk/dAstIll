@@ -21,13 +21,11 @@ flowchart TB
   summary[Summary content]
   sources[search_sources]
   chunks[search_chunks]
-  vectors[S3 Vectors]
   keyword[local libSQL FTS]
 
   transcript --> sources
   summary --> sources
   sources --> chunks
-  chunks --> vectors
   chunks --> keyword
 `;
 </script>
@@ -39,20 +37,19 @@ flowchart TB
   :chart="storageOwnershipDiagram"
 />
 
-| Data                                  | Storage    | Notes                                                      |
-| ------------------------------------- | ---------- | ---------------------------------------------------------- |
-| Channels                              | S3         | `channels/{id}.json` canonical channel records             |
-| Videos                                | libSQL     | `videos` table for canonical video records and queue state |
-| Transcripts, summaries, video info    | S3         | Canonical content blobs                                    |
-| User channel subscriptions            | S3         | `user-channel-subscriptions/{user_id}`                     |
-| User video memberships and view state | S3         | `user-video-memberships/*` and `user-video-states/*`       |
-| Search chunks                         | S3         | Derived projection                                         |
-| Search sources                        | S3         | Derived projection metadata                                |
-| Vector embeddings                     | S3 Vectors | Semantic search                                            |
-| Conversations                         | S3         | Authenticated user chat history                            |
-| Highlights                            | S3         | Authenticated user annotations                             |
-| User preferences                      | libSQL     | `preferences` table keyed by `user_id`                     |
-| TTS statistics                        | libSQL     | `tts_stats` table global aggregate row                     |
+| Data                                  | Storage | Notes                                                      |
+| ------------------------------------- | ------- | ---------------------------------------------------------- |
+| Channels                              | GCS     | `channels/{id}.json` canonical channel records             |
+| Videos                                | libSQL  | `videos` table for canonical video records and queue state |
+| Transcripts, summaries, video info    | GCS     | Canonical content blobs                                    |
+| User channel subscriptions            | GCS     | `user-channel-subscriptions/{user_id}`                     |
+| User video memberships and view state | GCS     | `user-video-memberships/*` and `user-video-states/*`       |
+| Search chunks                         | GCS     | Derived keyword projection                                 |
+| Search sources                        | GCS     | Derived projection metadata                                |
+| Conversations                         | GCS     | Authenticated user chat history                            |
+| Highlights                            | GCS     | Authenticated user annotations                             |
+| User preferences                      | libSQL  | `preferences` table keyed by `user_id`                     |
+| TTS statistics                        | libSQL  | `tts_stats` table global aggregate row                     |
 
 Browser storage is cache and UI state only. IndexedDB, `localStorage`, and `sessionStorage` do not
 own canonical content or user records.
@@ -88,7 +85,7 @@ User-facing fields such as `acknowledged` are overlays from user-scoped records.
 
 ## User-Scoped Library Records
 
-Most user-owned library state lives in S3 under user-specific prefixes.
+Most user-owned library state lives in GCS under user-specific prefixes.
 
 | Prefix                                  | Role                                                       |
 | --------------------------------------- | ---------------------------------------------------------- |
@@ -117,7 +114,7 @@ Grouping highlights by route or view is API behavior, not storage ownership.
 
 ## Chat Storage
 
-Persistent chat conversations are authenticated user records in S3.
+Persistent chat conversations are authenticated user records in GCS.
 
 | Storage                                   | Role                                               |
 | ----------------------------------------- | -------------------------------------------------- |
@@ -141,7 +138,7 @@ Message records store:
 - `sources` for assistant messages
 
 Sources reference search chunks for attribution. Signed-out chat stays in the frontend's ephemeral
-session path and does not write these S3 records.
+session path and does not write these GCS records.
 
 ## Search Projection
 
@@ -166,7 +163,7 @@ One record per `(video_id, source_kind)` pair:
 
 ### `search_chunks`
 
-Each chunk is an S3 object with:
+Each chunk is a GCS object with:
 
 - `search_source_id`
 - `source_generation`
@@ -176,18 +173,19 @@ Each chunk is an S3 object with:
 - `start_sec`
 - `token_count`
 
-Embeddings are stored separately in S3 Vectors. The local libSQL FTS index is a runtime keyword
-index built from `search_chunks`.
+The local libSQL FTS index is a runtime keyword index built from `search_chunks`. Semantic vector
+search is disabled in the current GCS-only runtime.
 
 If the projection schema changes, the backend can drop and recreate `search_sources` and
-`search_chunks`. S3 Vectors embeddings can be rebuilt independently.
+`search_chunks`.
 
 Search coverage counts use readiness flags from `videos` instead of scanning large transcript or
 summary text blobs.
 
 ## Generated Audio Cache
 
-Summary audio is a derived cache generated from the current summary text when Polly TTS is enabled.
+Summary audio is a derived cache generated from the current summary text when Google Cloud
+Text-to-Speech is enabled.
 
 Storage key:
 
@@ -198,15 +196,15 @@ summary-audio/{video_id}/{audio_hash}.{ext}
 The cache key includes:
 
 - current summary content
-- Polly voice
-- Polly engine
-- Polly output settings
+- Google TTS voice
+- Google TTS language
+- Google TTS output settings
 
 If the summary or TTS settings change, the cache key changes and old audio is not reused.
 
 ## libSQL Tables
 
-The runtime stores selected app state in a local libSQL file and reconciles it from S3-backed
+The runtime stores selected app state in a local libSQL file and reconciles it from GCS-backed
 snapshots when needed.
 
 ### `videos`
@@ -258,5 +256,5 @@ Browser caches must be keyed by auth scope.
 
 ### Search Chunks Are Disposable
 
-Search chunks and vector embeddings are derived from canonical transcript and summary content. They
-can be dropped and rebuilt.
+Search chunks are derived from canonical transcript and summary content. They can be dropped and
+rebuilt.

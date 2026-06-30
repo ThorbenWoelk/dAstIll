@@ -318,21 +318,13 @@ jobs:
             fi
           }
 
-          add_env_var AWS_REGION "eu-central-1"
-          add_env_var AWS_ROLE_ARN "arn:aws:iam::877173393100:role/dastill-gcp-backend"
-          add_env_var AWS_WIF_AUDIENCE "105579049790067983119"
-          add_env_var S3_DATA_BUCKET "dastill-data-eu-central-1"
-          add_env_var S3_VECTOR_BUCKET "dastill-vectors"
-          add_env_var S3_VECTOR_INDEX "search-chunks"
+          add_env_var GCS_DATA_BUCKET "${APP_NAME}-data-${REGION}"
           add_env_var DEFAULT_SEEDED_CHANNEL_IDS "UCbRP3c757lWg9M-U7TyEkXA,podcast:rss:https-feeds-simplecast-com-6hkohngs"
-          add_env_var SEARCH_SEMANTIC_ENABLED "true"
-          add_env_var SEARCH_AUTO_CREATE_VECTOR_INDEX "true"
+          add_env_var SEARCH_SEMANTIC_ENABLED "false"
+          add_env_var SEARCH_AUTO_CREATE_VECTOR_INDEX "false"
           add_env_var OLLAMA_URL "https://ollama.com"
           add_env_var OLLAMA_SUMMARY_MODEL "glm-5.1:cloud"
           add_env_var OLLAMA_DEFAULT_CHAT_MODEL "glm-5.1:cloud"
-          add_env_var OLLAMA_EMBEDDING_MODEL "embeddinggemma"
-          add_env_var SEARCH_HYDE_MODEL "glm-5.1:cloud"
-          add_env_var SEARCH_RERANK_MODEL "bge-reranker-v2-m3"
           add_env_var SUMMARY_EVALUATOR_MODEL "gemma4:31b-cloud"
           add_env_var CHAT_MULTI_PASS_ENABLED "true"
           add_env_var CHAT_GUARDRAIL_MODEL "glm-5.1:cloud"
@@ -356,8 +348,11 @@ jobs:
           add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$allowed_origins"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
           printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"
-          printf '%s\n' 'POLLY_TTS_ENABLED: "true"' >> "$env_file"
-          printf '%s\n' 'POLLY_TTS_VOICE_ID: "Stephen"' >> "$env_file"
+          printf '%s\n' 'GOOGLE_TTS_ENABLED: "true"' >> "$env_file"
+          printf '%s\n' 'GOOGLE_TTS_VOICE_NAME: "en-US-Wavenet-D"' >> "$env_file"
+          printf '%s\n' 'GOOGLE_TTS_LANGUAGE_CODE: "en-US"' >> "$env_file"
+          printf '%s\n' 'GOOGLE_TTS_AUDIO_ENCODING: "LINEAR16"' >> "$env_file"
+          printf '%s\n' 'GOOGLE_TTS_SAMPLE_RATE_HERTZ: "16000"' >> "$env_file"
           printf '%s\n' 'RUST_LOG: "dastill=info,tower_http=info"' >> "$env_file"
 
       - name: Deploy Backend to Cloud Run

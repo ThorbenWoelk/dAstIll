@@ -4,20 +4,11 @@
 const queryPathDiagram = String.raw`
 flowchart TB
   query[User query]
-  keyword[Keyword leg<br/>BM25 / FTS5]
-  semanticprep[Optional HyDE<br/>+ embedding]
-  vectors[Vector leg]
-  fusion[RRF fusion]
-  rerank[Optional reranker]
+  keyword[Keyword search<br/>BM25 / FTS5]
   results[Search + chat results]
 
   query --> keyword
-  query --> semanticprep
-  semanticprep --> vectors
-  keyword --> fusion
-  vectors --> fusion
-  fusion --> rerank
-  rerank --> results
+  keyword --> results
 `;
 
 const indexMaintenanceDiagram = String.raw`
@@ -25,49 +16,42 @@ flowchart TB
   canonical[Ready transcript or summary]
   pending[search_sources pending]
   worker[Search index worker]
-  chunks[search_chunks]
-  keyword[libSQL FTS5]
-  vectors[S3 Vectors]
-  retrieval[Keyword + hybrid retrieval]
+  chunks[search_chunks in GCS]
+  keyword[local libSQL FTS5]
+  retrieval[Keyword retrieval]
 
   canonical --> pending
   pending --> worker
   worker --> chunks
   worker --> keyword
-  worker --> vectors
   keyword --> retrieval
-  vectors --> retrieval
 `;
 </script>
 
 ## Overview
 
-Search has three layers:
+Search currently runs as keyword search through local libSQL FTS5.
 
-1. **BM25 keyword search** through local libSQL FTS5.
-2. **Vector search** through S3 Vectors.
-3. **RRF fusion**, optionally followed by a cross-encoder reranker.
-
-Each layer degrades independently. If semantic search is unavailable, keyword search still works.
+Semantic vector search is disabled in the GCS-only runtime. `SEARCH_SEMANTIC_ENABLED` must be
+`false`, and `vector_index_ready` remains `false`.
 
 <MermaidDiagram
-  caption="Search query path: keyword and semantic legs run independently, then merge before results are returned to workspace search or chat."
+  caption="Search query path: user queries run through the keyword index and return grouped video results."
   :chart="queryPathDiagram"
 />
 
 ## Storage And Rebuild Boundary
 
-| Store          | Role                                                  |
-| -------------- | ----------------------------------------------------- |
-| S3 data bucket | Rebuild source for `search-chunks/` JSON objects      |
-| local libSQL   | Runtime keyword index queried directly by the backend |
-| S3 Vectors     | Dense embeddings for ANN retrieval, keyed by chunk ID |
+| Store           | Role                                                  |
+| --------------- | ----------------------------------------------------- |
+| GCS data bucket | Rebuild source for `search-chunks/` JSON objects      |
+| local libSQL    | Runtime keyword index queried directly by the backend |
 
-S3 remains the rebuild source of truth for chunk content. The local keyword index is rebuilt from
+GCS remains the rebuild source of truth for chunk content. The local keyword index is rebuilt from
 stored chunks when the runtime index is empty.
 
 <MermaidDiagram
-  caption="Index maintenance flow: canonical content becomes pending search sources, then the search worker chunks, embeds, stores, and syncs the libSQL FTS5 keyword index."
+  caption="Index maintenance flow: canonical content becomes pending search sources, then the search worker chunks, stores, and syncs the libSQL FTS5 keyword index."
   :chart="indexMaintenanceDiagram"
 />
 
@@ -118,19 +102,18 @@ The search worker is a background loop with four recurring phases.
 | Phase                 | Work                                                                |
 | --------------------- | ------------------------------------------------------------------- |
 | Backfill              | Find ready transcript/summary content without `search_sources` rows |
-| Index pending sources | Claim pending rows, chunk content, embed when enabled, write chunks |
-| Reconcile             | Requeue stale rows after content hash, error, or embedding changes  |
+| Index pending sources | Claim pending rows, chunk content, write chunks                     |
+| Reconcile             | Requeue stale rows after content hash or error changes              |
 | Prune                 | Remove stale chunk rows no longer referenced by a ready generation  |
 
 Summary sources are prioritized before transcript sources when discovering, claiming, and
 reconciling work. This keeps summary searchability from waiting behind large transcript backlogs.
 
-Canonical transcript and summary write paths mark sources pending. They do not chunk or embed inline.
+Canonical transcript and summary write paths mark sources pending. They do not chunk inline.
 
 ## Chunking
 
-Chunk sizes, chunk caps, embedding dimensions, and embedding batch size live in
-[Runtime Limits](/operations/runtime-limits#search-limits).
+Chunk sizes and chunk caps live in [Runtime Limits](/operations/runtime-limits#search-limits).
 
 ### Transcript Chunks
 
@@ -166,36 +149,10 @@ the summary chunk cap.
 - excess blank lines and whitespace
 - leading/trailing whitespace
 
-## Embedding Input
-
-Chunks are enriched with metadata before embedding:
-
-```text
-Video: <video_title>
-Channel: <channel_name>
-Source: transcript|summary
-Section: <section_title>  (omitted when empty)
-
-<chunk_text>
-```
-
-This moves vectors toward the source topic and improves recall for queries that reference the content
-area instead of exact transcript wording.
-
-The embedding service:
-
-- reads the configured embedding model
-- calls Ollama `/api/embed`
-- batches chunks before each request
-- validates returned dimensions
-- checks model availability through Ollama `/api/tags`
-
-Embedding batch and dimension limits live in [Runtime Limits](/operations/runtime-limits#search-limits).
-
 ## Query Path
 
 <MermaidDiagram
-  caption="Keyword and semantic retrieval run as separate legs. Hybrid mode fuses them and can rerank the fused candidate list."
+  caption="Keyword retrieval searches the local FTS index and groups matching chunks by video."
   :chart="queryPathDiagram"
 />
 
@@ -210,21 +167,7 @@ capped for FTS matching and snippet centering. The term cap lives in
 "what is the best db in town"                 -> ["db", "town"]
 ```
 
-### 2. HyDE
-
-HyDE runs when:
-
-- a HyDE model is configured
-- semantic search is enabled for the request
-- the query stays within the HyDE term gate
-
-The backend calls Ollama `/api/generate` to create a short hypothetical answer passage. That passage
-becomes the embedding input. The original query still drives FTS and snippet extraction. The timeout
-and term gate live in [Runtime Limits](/operations/runtime-limits#search-limits).
-
-HyDE failure falls back to embedding the raw query.
-
-### 3. Keyword Leg
+### 2. Keyword Leg
 
 BM25 search targets:
 
@@ -232,13 +175,13 @@ BM25 search targets:
 - `video_title`
 - `section_title`
 
-Channel and source-kind filters are applied in SQL. Candidate limits depend on execution mode and
-live in [Runtime Limits](/operations/runtime-limits#search-limits).
+Channel and source-kind filters are applied in SQL. Candidate limits live in
+[Runtime Limits](/operations/runtime-limits#search-limits).
 
 `extract_keyword_snippet` centers snippets around the earliest matching token. Long snippets are
 trimmed to the configured snippet window.
 
-The FTS pre-ranker sorts candidates before fusion:
+The FTS pre-ranker sorts candidates before grouping:
 
 1. Exact phrase match in chunk text, video title, or section title.
 2. Summary source before transcript source.
@@ -246,86 +189,24 @@ The FTS pre-ranker sorts candidates before fusion:
 4. More query terms present in the video title.
 5. Original BM25 rank.
 
-### 4. Semantic Leg
-
-The semantic leg requires semantic search enabled and an embedding model configured.
-
-| Retrieval mode | Mechanism                                         |
-| -------------- | ------------------------------------------------- |
-| `hybrid_ann`   | ANN query via S3 Vectors                          |
-| `hybrid_exact` | Exact dot-product scan via S3 before ANN is ready |
-
-Both paths accept metadata filters for `source_kind` and `channel_id`.
-
-Special case: `source=all` with `hybrid_exact` scans summaries only to keep latency bounded. The ANN
-path handles all source kinds.
-
-### 5. Fusion
-
-Reciprocal Rank Fusion merges FTS and semantic lists:
-
-```text
-score(chunk) = sum over each list L where chunk appears:
-               1 / (60.0 + rank_in_L)
-```
-
-Chunks found by both retrievers accumulate both contributions.
-
-### 6. Reranking
-
-The neural reranker runs when:
-
-- a reranker model is configured
-- execution mode is `hybrid`
-- both FTS and semantic candidate lists are non-empty
-
-The backend posts the capped fused chunks and the original query to Ollama `/api/rerank`. Results
-sort by `relevance_score`. Rerank candidate and timeout limits live in
-[Runtime Limits](/operations/runtime-limits#search-limits).
-
-Reranker failure falls back to plain RRF ordering.
-
-### 7. Grouping
+### 3. Grouping
 
 Results are grouped by `video_id`. Each group includes display metadata and up to one best match per
 source kind. Response limits live in [Runtime Limits](/operations/runtime-limits#search-limits).
 
 ## Execution Modes
 
-| Mode       | FTS | Semantic | Fusion | Reranker      |
-| ---------- | --- | -------- | ------ | ------------- |
-| `keyword`  | Yes | No       | No     | No            |
-| `semantic` | No  | Yes      | No     | No            |
-| `hybrid`   | Yes | Yes      | RRF    | If configured |
+The effective runtime mode is `keyword`.
 
-If semantic search is unconfigured or embedding fails, `hybrid` degrades to FTS-only for that
-request. If either candidate list is empty, the other list is used directly.
-
-## Semantic Enablement
-
-The search service only generates embeddings when semantic search is enabled.
-
-If semantic search is disabled:
-
-- sources are still chunked and indexed in libSQL FTS5
-- FTS still works
-- `embedded_chunk_count` remains `0`
-- `vector_index_ready` remains `false`
-
-Backend config can override the default. Local debug runs default semantic on. Release builds default
-semantic off.
+| Mode       | FTS | Semantic | Status                           |
+| ---------- | --- | -------- | -------------------------------- |
+| `keyword`  | Yes | No       | Supported                        |
+| `semantic` | No  | No       | Disabled in the GCS-only runtime |
+| `hybrid`   | Yes | No       | Degrades to keyword-only         |
 
 ## Status Surface
 
-The runtime reports the effective retrieval mode:
-
-| Status mode    | Condition                                                  |
-| -------------- | ---------------------------------------------------------- |
-| `fts_only`     | Semantic search disabled, or no embedding model configured |
-| `hybrid_exact` | Semantic enabled; ANN index not ready                      |
-| `hybrid_ann`   | Semantic enabled; ANN index ready                          |
-
-The reranker does not change `retrieval_mode`.
+The runtime reports `fts_only` while semantic search is disabled.
 
 `SearchStatusPayload` also reports indexing counts:
 
@@ -338,24 +219,3 @@ The reranker does not change `retrieval_mode`.
 - `embedded_chunk_count`
 - `vector_index_ready`
 - `available`
-
-The frontend receives search status in workspace bootstrap and refreshes it through the status SSE
-stream.
-
-## API Entry Points
-
-The backend exposes:
-
-- `GET /api/search`
-- `GET /api/search/status`
-- `GET /api/search/status/stream`
-- `POST /api/search/rebuild`
-
-The live OpenAPI document is the debugging source of truth for parameter and response shape:
-
-```text
-/api/openapi.json
-```
-
-`POST /api/search/rebuild` resets the derived search projection and re-initializes progress tracking
-from canonical content.

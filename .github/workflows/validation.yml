@@ -129,11 +129,9 @@ jobs:
           export OLLAMA_SUMMARY_MODEL="glm-5.1:cloud"
           export SUMMARY_EVALUATOR_MODEL="gemma4:31b-cloud"
           export BACKEND_CORS_ALLOWED_ORIGINS="http://localhost:3000"
-          export S3_DATA_BUCKET="test"
-          export S3_VECTOR_BUCKET="test"
-          export AWS_REGION="us-east-1"
-          export AWS_ACCESS_KEY_ID="test"
-          export AWS_SECRET_ACCESS_KEY="test"
+          export OBJECT_STORE_PROVIDER="memory"
+          export ALLOW_IN_MEMORY_OBJECT_STORE="true"
+          export SEARCH_SEMANTIC_ENABLED="false"
 
           smoke_log="$(mktemp)"
           ./target/release/dastill >"$smoke_log" 2>&1 &

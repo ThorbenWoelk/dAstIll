@@ -7,14 +7,16 @@ import {
 
 describe("normalizeUserErrorMessage", () => {
   it("rewrites technical TTS configuration errors", () => {
-    expect(normalizeUserErrorMessage("Polly TTS is not configured")).toBe(
+    expect(normalizeUserErrorMessage("Text-to-Speech is not configured")).toBe(
       "Sorry, audio playback is not available right now.",
     );
   });
 
   it("rewrites infrastructure failures to a plain fallback", () => {
     expect(
-      normalizeUserErrorMessage("S3 error: bucket missing", { status: 503 }),
+      normalizeUserErrorMessage("object store error: bucket missing", {
+        status: 503,
+      }),
     ).toBe("Sorry, that part of the app is unavailable right now.");
   });
 

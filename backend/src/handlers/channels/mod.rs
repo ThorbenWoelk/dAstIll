@@ -165,7 +165,7 @@ pub async fn list_channels(
     Extension(access_context): Extension<AccessContext>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Do not cache: subscription fields (e.g. `earliest_sync_date`) can change outside the API
-    // (S3 ops, migration tools); stale list rows keep the sync boundary input empty.
+    // (object-store ops, migration tools); stale list rows keep the sync boundary input empty.
     let channels = match access_context.user_id.as_deref() {
         Some(user_id) if access_context.auth_state == AuthState::Authenticated => {
             db::list_user_channels_with_virtual_others(&state.db, user_id)
@@ -205,7 +205,7 @@ pub async fn workspace_bootstrap(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let video_params = params.video_params();
     // Do not cache: same as `list_channels` / sync depth — subscription and snapshot rows must
-    // reflect store writes immediately (including S3 migrations).
+    // reflect store writes immediately (including object-store migrations).
 
     let ai_available = state.summarizer.is_available().await;
     let ai_status = state
@@ -599,7 +599,7 @@ pub async fn get_channel_sync_depth(
     Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // Do not cache: subscription `earliest_sync_date` can change outside the API (e.g. S3 ops);
+    // Do not cache: subscription `earliest_sync_date` can change outside the API (e.g. object-store ops);
     // stale sync-depth misleads the UI until TTL expires on every layer.
     let channel = require_channel_for_access(&state, &access_context, &id).await?;
 
@@ -949,7 +949,7 @@ pub async fn backfill_channel_videos(
     })))
 }
 
-// Tests require S3 backend; run with: cargo test -- --ignored
+// Tests require live object-store backend; run with: cargo test -- --ignored
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

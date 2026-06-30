@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 pub fn install_crypto_providers() {
     // Install crypto providers for all rustls versions in the dependency tree.
-    // libsql/hyper-rustls uses rustls 0.22, AWS SDKs use rustls 0.23.
+    // Dependency graph uses multiple rustls versions.
     // Installing both ensures TLS works across the entire tree.
     rustls::crypto::ring::default_provider()
         .install_default()

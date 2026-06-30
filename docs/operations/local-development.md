@@ -10,15 +10,18 @@ Install:
 
 You also need local access to the backing services you plan to use:
 
-- AWS credentials with access to S3, S3 Vectors, and optionally Polly
-- an AWS S3 bucket for data storage
-- an AWS S3 Vectors bucket for semantic search
+- Google Application Default Credentials with access to the GCS data bucket
+- a Google Cloud Storage bucket for app data
+- optional Google Cloud Text-to-Speech access for summary audio
 - a YouTube Data API key when you ingest YouTube sources
 - an OpenAlex API key when you use authenticated OpenAlex search
 - a local or private OpenAI-compatible ASR service when podcast feeds do not publish transcripts
 
-The preferred AWS credential path is the shared machine-local file at
-`~/.config/dastill/aws/credentials`.
+For local GCP credentials, use:
+
+```bash
+gcloud auth application-default login
+```
 
 Clone the repo:
 
@@ -60,9 +63,9 @@ Stop everything cleanly:
 ```
 
 Startup verifies the backend health endpoint and the initial workspace bootstrap response before it
-reports success. If the bootstrap probe fails because local AWS credentials are missing, expired, or
-still pinned to a temporary session in `backend.env`, startup stops and prints a hint about the
-credential source it found. Other bootstrap failures also stop startup; check `backend.log`.
+reports success. If the bootstrap probe fails because local GCP credentials or `GCS_DATA_BUCKET` are
+missing, startup stops and prints a hint about the credential source it found. Other bootstrap
+failures also stop startup; check `backend.log`.
 
 Process ownership, backend startup internals, worker loops, and shared runtime state are covered in
 [Runtime Topology](/architecture/runtime-topology).
@@ -149,60 +152,19 @@ Local backend startup reads the shared machine-local file at `~/.config/dastill/
 default. If you want a one-off worktree override, `backend/.env` still works and wins over the shared
 file. Shell environment variables win over both file-based sources.
 
-Local startup needs valid AWS credentials for S3 and S3 Vectors access. It does not require
-additional GCP service-account credentials for backend storage. Project-scoped values may still be
-needed for Firebase Auth, Hosting-aligned frontend config, and other services. Use
-`backend/.env.example` and `frontend/.env.example` for the current key names.
+Local startup needs `GCS_DATA_BUCKET` and valid Google Application Default Credentials for the GCS
+provider. Set `GOOGLE_APPLICATION_CREDENTIALS` only when you need to force a specific service
+account key file. If it is unset, the Google client libraries use the local ADC store created by
+`gcloud auth application-default login`.
 
-The preferred local AWS setup is a shared credentials file outside the repo-owned `.env` files.
-Create these machine-local files:
+Smoke tests can opt into the in-memory object store with:
 
-```bash
-mkdir -p ~/.config/dastill/aws
-cat > ~/.config/dastill/aws/credentials <<'EOF'
-[default]
-aws_access_key_id = your-access-key
-aws_secret_access_key = your-secret-key
-EOF
-
-cat > ~/.config/dastill/aws/config <<'EOF'
-[default]
-region = eu-central-1
-EOF
+```env
+OBJECT_STORE_PROVIDER=memory
+ALLOW_IN_MEMORY_OBJECT_STORE=true
 ```
 
-Point the local backend at those files from `~/.config/dastill/backend.env`. The supported key names
-live in `backend/.env.example`.
-
-Do this even if the AWS CLI can log in. Otherwise ad-hoc commands and backend startup may fall back
-to an expiring AWS CLI login/session cache instead of the persistent local keypair.
-
-Inline AWS key material in `~/.config/dastill/backend.env` is still supported as a fallback, but it
-overrides the shared credentials file. Remove stale temporary-session material when you want
-permanent local credentials; stale session values force the backend onto temporary STS credentials
-even when the AWS CLI can log in.
-
-To migrate an existing permanent inline keypair out of `backend.env`:
-
-```bash
-./scripts/migrate_local_aws_credentials.sh
-```
-
-That helper intentionally refuses to migrate temporary AWS session credentials.
-
-If you only have temporary SSO-backed credentials available, log in with the profile you want and
-sync the exported keypair into `~/.config/dastill/backend.env`:
-
-```bash
-aws sso login --profile your-profile
-./scripts/sync_aws_programmatic_credentials.sh your-profile
-```
-
-That path is useful for short-lived sessions, but the shared credentials file remains the preferred
-permanent local setup.
-
-When you need to inspect S3 or S3 Vectors manually, prefer commands that use the same credential
-files.
+That provider is for tests and local process-only checks. It does not persist data across restarts.
 
 Set optional tracing, operator access, and project-scoped API keys in `~/.config/dastill/backend.env`.
 Use `backend/.env.example` for the current key names.

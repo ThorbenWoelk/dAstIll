@@ -2,8 +2,8 @@ use std::env;
 use std::sync::{Mutex, OnceLock};
 
 use super::{
-    ChatRuntimeConfig, DatabricksRuntimeConfig, LocalAsrAuthMode, LocalAsrRuntimeConfig,
-    OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
+    ChatRuntimeConfig, DatabricksRuntimeConfig, GoogleTtsRuntimeConfig, LocalAsrAuthMode,
+    LocalAsrRuntimeConfig, OllamaRuntimeConfig, SearchRuntimeConfig, SecurityRuntimeConfig,
 };
 
 #[test]
@@ -457,7 +457,39 @@ fn search_runtime_config_defaults_vector_index_creation_off() {
 
     let config = SearchRuntimeConfig::from_env();
     assert!(!config.auto_create_vector_index);
-    assert_eq!(config.semantic_enabled, cfg!(debug_assertions));
+    assert!(!config.semantic_enabled);
+}
+
+#[test]
+fn google_tts_runtime_config_reads_enabled_values() {
+    let _guard = ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+
+    let _reset = EnvReset::capture(&[
+        "GOOGLE_TTS_ENABLED",
+        "GOOGLE_TTS_VOICE_NAME",
+        "GOOGLE_TTS_LANGUAGE_CODE",
+        "GOOGLE_TTS_MODEL_NAME",
+        "GOOGLE_TTS_AUDIO_ENCODING",
+        "GOOGLE_TTS_SAMPLE_RATE_HERTZ",
+    ]);
+    set_env("GOOGLE_TTS_ENABLED", "true");
+    set_env("GOOGLE_TTS_VOICE_NAME", "en-US-Wavenet-D");
+    set_env("GOOGLE_TTS_LANGUAGE_CODE", "en-US");
+    set_env("GOOGLE_TTS_MODEL_NAME", "wavenet");
+    set_env("GOOGLE_TTS_AUDIO_ENCODING", "LINEAR16");
+    set_env("GOOGLE_TTS_SAMPLE_RATE_HERTZ", "24000");
+
+    let config = GoogleTtsRuntimeConfig::from_env()
+        .expect("config should parse")
+        .expect("tts should be enabled");
+    assert_eq!(config.voice_name, "en-US-Wavenet-D");
+    assert_eq!(config.language_code, "en-US");
+    assert_eq!(config.model_name.as_deref(), Some("wavenet"));
+    assert_eq!(config.audio_encoding, "LINEAR16");
+    assert_eq!(config.sample_rate_hertz, 24_000);
 }
 
 #[test]

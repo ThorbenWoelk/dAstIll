@@ -41,9 +41,8 @@ Deeper domain-specific guidance belongs in dedicated docs and should be linked f
 - Sensitive values for production belong in **GCP Secret Manager**. Terraform creates the secret containers and IAM bindings; secret payloads are written directly in Secret Manager and must not be stored in Terraform state.
 - Infra CI auth model:
   - GCP: GitHub OIDC -> GCP Workload Identity Federation -> `dastill-github-sa`
-  - AWS: GitHub OIDC -> AWS role `dastill-github-terraform`
-  - Cloud Run runtime still uses separate GCP -> AWS federation via `dastill-gcp-backend`
-- One bootstrap edge remains for AWS CI auth: the first creation of the AWS GitHub OIDC provider and `dastill-github-terraform` role must be applied from an already authenticated AWS context. After that, recurring Terraform runs can stay in CI.
+- Runtime storage uses Google Cloud Storage through Cloud Run Application Default Credentials.
+- Semantic vector search is disabled in the GCS-only runtime.
 - Secret bootstrap/rotation flow:
   1. Apply Terraform first so secret container and IAM exist.
   2. Add secret payload with `gcloud secrets versions add <secret-name> --project <project-id> --data-file=-`.

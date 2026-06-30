@@ -1,4 +1,4 @@
-# ADR: dastill-mini uses S3-backed user video state for read tracking
+# ADR: dastill-mini uses object-store-backed user video state for read tracking
 
 ## Status
 
@@ -10,7 +10,7 @@ The main workspace currently resolves read-state operations through the canonica
 
 ## Decision
 
-`dastill-mini` reads and writes summary read status through the existing S3-backed per-user video state store instead of relying on a SQL-backed acknowledged flag as the source of truth.
+`dastill-mini` reads and writes summary read status through the existing object-store-backed per-user video state store instead of relying on a SQL-backed acknowledged flag as the source of truth.
 
 ## Consequences
 

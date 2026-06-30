@@ -11,6 +11,9 @@ locals {
       "sts.googleapis.com",
       "cloudresourcemanager.googleapis.com",
       "identitytoolkit.googleapis.com",
+      "storage.googleapis.com",
+      "storagetransfer.googleapis.com",
+      "texttospeech.googleapis.com",
     ],
     var.billing_export_enabled ? [
       "bigquery.googleapis.com",

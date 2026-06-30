@@ -100,6 +100,12 @@ resource "google_project_iam_member" "backend_firebase_auth" {
   member  = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
+resource "google_storage_bucket_iam_member" "backend_data_bucket_object_user" {
+  bucket = google_storage_bucket.data.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.backend_sa.email}"
+}
+
 output "backend_sa_email" {
   value = google_service_account.backend_sa.email
 }

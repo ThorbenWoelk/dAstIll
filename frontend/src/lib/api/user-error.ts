@@ -46,7 +46,7 @@ export function normalizeUserErrorMessage(
   }
 
   if (
-    lower.includes("polly tts is not configured") ||
+    lower.includes("text-to-speech is not configured") ||
     lower.includes("text-to-speech is currently not available") ||
     lower.includes("tts unavailable")
   ) {
@@ -102,8 +102,8 @@ export function normalizeUserErrorMessage(
   }
 
   if (
-    lower.includes("s3 error") ||
-    lower.includes("s3 vectors error") ||
+    lower.includes("object store error") ||
+    lower.includes("gcs") ||
     lower.includes("serialization error") ||
     lower.includes("database") ||
     lower.includes("libsql") ||

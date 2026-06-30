@@ -9,7 +9,7 @@ use crate::db::Store;
 use crate::read_cache::ReadCache;
 use crate::search::{FtsIndex, SearchProgress, SearchService};
 use crate::security::RequestRateLimiter;
-use crate::services::PollyTtsService;
+use crate::services::TextToSpeechService;
 use crate::services::{
     ActiveChatHandle, ChatService, CloudCooldown, DatabricksSqlService, InputGuardrailService,
     OpenAlexPlannerService, OpenAlexService, PodcastFeedService, SummarizerService,
@@ -58,7 +58,7 @@ pub struct AppState {
     pub podcast_feed: Arc<PodcastFeedService>,
     pub website: Arc<WebsiteService>,
     pub transcript: Arc<TranscriptService>,
-    pub tts: Option<Arc<PollyTtsService>>,
+    pub tts: Option<Arc<TextToSpeechService>>,
     pub summarizer: Arc<SummarizerService>,
     pub summary_evaluator: Arc<SummaryEvaluatorService>,
     pub search: Arc<SearchService>,

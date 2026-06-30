@@ -19,8 +19,6 @@ concurrency:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   APP_NAME: dastill
-  AWS_REGION: eu-central-1
-  AWS_TERRAFORM_ROLE_ARN: arn:aws:iam::877173393100:role/dastill-github-terraform
   TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
   LOCAL_ASR_ENABLED: ${{ vars.LOCAL_ASR_ENABLED }}
   TF_VAR_billing_export_enabled: ${{ vars.TF_VAR_billing_export_enabled }}
@@ -51,14 +49,6 @@ jobs:
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3.0.0
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.1.0
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ env.AWS_TERRAFORM_ROLE_ARN }}
-          role-session-name: github-actions-terraform
-          allowed-account-ids: "877173393100"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4

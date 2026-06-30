@@ -54,8 +54,8 @@ as a security hardening gap.
 | Lane                                                 | Limit                      | Notes                                         |
 | ---------------------------------------------------- | -------------------------- | --------------------------------------------- |
 | Local summary/evaluator/chat/guardrail/planner calls | `1` concurrent request     | Cloud-tagged models skip this local semaphore |
-| Search embedding/rerank/HyDE calls                   | `1` concurrent request     | Bounds local model-heavy search work          |
-| S3 operations                                        | `12` concurrent operations | Shared S3 helper semaphore                    |
+| Search embedding/rerank/HyDE calls                   | `1` concurrent request     | Reserved for future semantic search work      |
+| Object-store operations                              | `12` concurrent operations | Shared object-store helper semaphore          |
 | Chat tool loop                                       | `4` steps                  | Regular chat turn                             |
 | Chat tool loop, deep research                        | `6` steps                  | Deep research chat turn                       |
 | Chat model calls per turn                            | `12` calls                 | Regular chat turn                             |
@@ -63,17 +63,17 @@ as a security hardening gap.
 
 ## Worker Cadence And Batch Limits
 
-| Worker                    | Active cadence | Idle cadence                   | Batch / scan limit                   |
-| ------------------------- | -------------- | ------------------------------ | ------------------------------------ |
-| Queue worker              | `5s`           | backs off from `15s` to `60s`  | `4` videos                           |
-| Refresh worker            | `30m`          | same as active                 | source-dependent                     |
-| Gap scan worker           | `10m`          | same as active                 | `8` videos per channel               |
-| Summary evaluation worker | `7s`           | backs off from `30s` to `120s` | `4` summaries                        |
-| Search backfill           | search worker  | search worker                  | `64` sources                         |
-| Search indexing           | `3s`           | backs off from `15s` to `120s` | `8` sources                          |
-| Search reconcile          | `60s`          | search worker                  | `64` sources                         |
-| Search prune              | search worker  | search worker                  | `256` sources                        |
-| Vector-index retry        | `5m`           | search worker                  | only after vector index is not ready |
+| Worker                    | Active cadence | Idle cadence                   | Batch / scan limit                 |
+| ------------------------- | -------------- | ------------------------------ | ---------------------------------- |
+| Queue worker              | `5s`           | backs off from `15s` to `60s`  | `4` videos                         |
+| Refresh worker            | `30m`          | same as active                 | source-dependent                   |
+| Gap scan worker           | `10m`          | same as active                 | `8` videos per channel             |
+| Summary evaluation worker | `7s`           | backs off from `30s` to `120s` | `4` summaries                      |
+| Search backfill           | search worker  | search worker                  | `64` sources                       |
+| Search indexing           | `3s`           | backs off from `15s` to `120s` | `8` sources                        |
+| Search reconcile          | `60s`          | search worker                  | `64` sources                       |
+| Search prune              | search worker  | search worker                  | `256` sources                      |
+| Vector-index retry        | disabled       | search worker                  | semantic vector search is disabled |
 
 All worker loops skip scheduled work when there is no recent user activity.
 
@@ -89,26 +89,26 @@ All worker loops skip scheduled work when there is no recent user activity.
 
 ## Search Limits
 
-| Limit                        | Value                                      | Used for                         |
-| ---------------------------- | ------------------------------------------ | -------------------------------- |
-| Transcript target chunk size | `300` words                                | Search projection chunking       |
-| Transcript chunk overlap     | `40` words                                 | Search projection chunking       |
-| Transcript chunks per source | `80` max                                   | Search projection chunking       |
-| Summary target chunk size    | `300` words                                | Search projection chunking       |
-| Summary chunks per source    | `80` max, including full-document chunk    | Search projection chunking       |
-| Embedding dimensions         | `512`                                      | Common embeddinggemma setup      |
-| Embedding batch size         | `8` chunks                                 | Search worker embedding requests |
-| Embedding request timeout    | `90s`                                      | Ollama embedding calls           |
-| HyDE timeout                 | `30s`                                      | Optional query expansion         |
-| Rerank timeout               | `30s`                                      | Optional cross-encoder reranking |
-| Rerank candidate cap         | `50` chunks                                | Reranker input                   |
-| FTS query term cap           | `4` terms                                  | Keyword search parser            |
-| Snippet window               | `420` characters                           | Search result excerpts           |
-| Search result `limit`        | default `8`, clamped `1`-`25` video groups | `/api/search`                    |
-| Hybrid FTS candidates        | `limit * 8`, clamped `10`-`100`            | Keyword leg                      |
-| Keyword FTS candidates       | `limit * 2`, clamped `10`-`50`             | Keyword-only leg                 |
-| ANN semantic candidates      | `limit * 8`, clamped `10`-`100`            | S3 Vectors leg                   |
-| Exact semantic candidates    | `limit * 4`, clamped `10`-`50`             | Exact dot-product fallback       |
+| Limit                        | Value                                      | Used for                    |
+| ---------------------------- | ------------------------------------------ | --------------------------- |
+| Transcript target chunk size | `300` words                                | Search projection chunking  |
+| Transcript chunk overlap     | `40` words                                 | Search projection chunking  |
+| Transcript chunks per source | `80` max                                   | Search projection chunking  |
+| Summary target chunk size    | `300` words                                | Search projection chunking  |
+| Summary chunks per source    | `80` max, including full-document chunk    | Search projection chunking  |
+| Embedding dimensions         | disabled                                   | Semantic search placeholder |
+| Embedding batch size         | disabled                                   | Semantic search placeholder |
+| Embedding request timeout    | disabled                                   | Semantic search placeholder |
+| HyDE timeout                 | disabled                                   | Semantic search placeholder |
+| Rerank timeout               | disabled                                   | Semantic search placeholder |
+| Rerank candidate cap         | disabled                                   | Semantic search placeholder |
+| FTS query term cap           | `4` terms                                  | Keyword search parser       |
+| Snippet window               | `420` characters                           | Search result excerpts      |
+| Search result `limit`        | default `8`, clamped `1`-`25` video groups | `/api/search`               |
+| Hybrid FTS candidates        | disabled                                   | Semantic search placeholder |
+| Keyword FTS candidates       | `limit * 2`, clamped `10`-`50`             | Keyword-only leg            |
+| ANN semantic candidates      | disabled                                   | Semantic search placeholder |
+| Exact semantic candidates    | disabled                                   | Semantic search placeholder |
 
 ## Chat Limits
 
@@ -156,10 +156,11 @@ pass.
 
 ## Billing Alert Budgets
 
-| Config key                                      | Default                                        | Used for                                      |
-| ----------------------------------------------- | ---------------------------------------------- | --------------------------------------------- |
-| `billing_budget_app_monthly_amount_units`       | `50`                                           | Monthly all-service alert budget              |
-| `billing_budget_cloud_run_monthly_amount_units` | `10`                                           | Monthly Cloud Run service-scoped alert budget |
-| `billing_budget_thresholds`                     | `50%`, `80%`, `100%` actual, `100%` forecasted | Alert thresholds                              |
+| Config key                                          | Default                                        | Used for                                          |
+| --------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------- |
+| `billing_budget_app_monthly_amount_units`           | `50`                                           | Monthly all-service alert budget                  |
+| `billing_budget_cloud_run_monthly_amount_units`     | `10`                                           | Monthly Cloud Run service-scoped alert budget     |
+| `billing_budget_cloud_storage_monthly_amount_units` | `5`                                            | Monthly Cloud Storage service-scoped alert budget |
+| `billing_budget_thresholds`                         | `50%`, `80%`, `100%` actual, `100%` forecasted | Alert thresholds                                  |
 
 Billing budgets are alerts only. They do not cap, stop, or throttle spend.

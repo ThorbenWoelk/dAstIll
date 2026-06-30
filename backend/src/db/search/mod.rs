@@ -1,11 +1,9 @@
-use aws_smithy_types::Document;
-
 use crate::models::{ContentStatus, Summary, Transcript, Video};
 use crate::search::{SearchCandidate, SearchIndexChunk, SearchSourceKind};
 
 use super::{
     SearchMaterial, SearchProgressMaterial, SearchSourceCounts, SearchSourceRecord,
-    SearchSourceState, Store, StoreError, format_aws_error,
+    SearchSourceState, Store, StoreError,
 };
 
 fn search_source_key(video_id: &str, source_kind: SearchSourceKind) -> String {
@@ -22,24 +20,6 @@ fn source_id_from_video_kind(video_id: &str, kind: &str) -> i64 {
     video_id.hash(&mut hasher);
     kind.hash(&mut hasher);
     (hasher.finish() & 0x7FFFFFFFFFFFFFFF) as i64
-}
-
-fn build_metadata(entries: Vec<(&str, Document)>) -> Document {
-    let map: std::collections::HashMap<String, Document> = entries
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect();
-    Document::Object(map)
-}
-
-fn get_doc_string(doc: &Document, key: &str) -> Option<String> {
-    match doc {
-        Document::Object(map) => match map.get(key) {
-            Some(Document::String(s)) => Some(s.clone()),
-            _ => None,
-        },
-        _ => None,
-    }
 }
 
 pub async fn mark_search_source_pending(
@@ -88,7 +68,7 @@ pub async fn clear_search_source(
     video_id: &str,
     source_kind: SearchSourceKind,
 ) -> Result<(), StoreError> {
-    delete_vectors_for_source(store, video_id, source_kind).await?;
+    delete_search_artifacts_for_source(store, video_id, source_kind).await?;
     store
         .delete_key(&search_source_key(video_id, source_kind))
         .await
@@ -172,7 +152,7 @@ pub async fn mark_search_source_failed(
 pub async fn replace_search_chunks(
     store: &Store,
     video_id: &str,
-    channel_id: &str,
+    _channel_id: &str,
     source_kind: SearchSourceKind,
     content_hash: &str,
     embedding_model: Option<&str>,
@@ -186,7 +166,7 @@ pub async fn replace_search_chunks(
         return Ok(false);
     }
 
-    delete_vectors_for_source(store, video_id, source_kind).await?;
+    delete_search_artifacts_for_source(store, video_id, source_kind).await?;
 
     #[derive(serde::Serialize)]
     struct ChunkData<'a> {
@@ -198,15 +178,9 @@ pub async fn replace_search_chunks(
         start_sec: Option<f32>,
     }
 
-    let mut put_batch: Vec<aws_sdk_s3vectors::types::PutInputVector> = Vec::new();
     let mut bundle_data = Vec::new();
 
     for chunk in chunks {
-        let embedding = chunk
-            .embedding_json
-            .as_deref()
-            .and_then(|json| serde_json::from_str::<Vec<f32>>(json).ok());
-
         let vkey = vector_key(
             video_id,
             source_kind.as_str(),
@@ -229,60 +203,6 @@ pub async fn replace_search_chunks(
 
         // 2. Add to bundle for future optimized hydration
         bundle_data.push(chunk_item);
-
-        let Some(embedding) = embedding else { continue };
-
-        let chunk_text_clamped: String = chunk.chunk_text.chars().take(30_000).collect();
-        let mut meta_entries: Vec<(&str, Document)> = vec![
-            ("video_id", Document::String(video_id.to_string())),
-            ("channel_id", Document::String(channel_id.to_string())),
-            (
-                "source_kind",
-                Document::String(source_kind.as_str().to_string()),
-            ),
-            ("chunk_text", Document::String(chunk_text_clamped)),
-            (
-                "source_generation",
-                Document::Number(aws_smithy_types::Number::Float(
-                    current.source_generation as f64,
-                )),
-            ),
-            (
-                "chunk_index",
-                Document::Number(aws_smithy_types::Number::Float(chunk.chunk_index as f64)),
-            ),
-        ];
-        if let Some(ref title) = chunk.section_title {
-            meta_entries.push(("section_title", Document::String(title.clone())));
-        }
-        if let Some(sec) = chunk.start_sec {
-            meta_entries.push((
-                "start_sec",
-                Document::Number(aws_smithy_types::Number::Float(sec as f64)),
-            ));
-        }
-
-        let put_vector = aws_sdk_s3vectors::types::PutInputVector::builder()
-            .key(vkey)
-            .data(aws_sdk_s3vectors::types::VectorData::Float32(embedding))
-            .metadata(build_metadata(meta_entries))
-            .build()
-            .map_err(|e| StoreError::S3Vectors(e.to_string()))?;
-
-        put_batch.push(put_vector);
-
-        // Flush vectors in batches of 500 (API limit)
-        if put_batch.len() >= 500 {
-            store
-                .s3v
-                .put_vectors()
-                .vector_bucket_name(&store.vector_bucket)
-                .index_name(&store.vector_index)
-                .set_vectors(Some(std::mem::take(&mut put_batch)))
-                .send()
-                .await
-                .map_err(|e| StoreError::S3Vectors(format_aws_error(&e)))?;
-        }
     }
 
     // 3. Write the consolidated bundle (compressed)
@@ -296,19 +216,6 @@ pub async fn replace_search_chunks(
         store.put_json_gz(&bundle_key, &bundle_data).await?;
     }
 
-    // Flush remaining vectors
-    if !put_batch.is_empty() {
-        store
-            .s3v
-            .put_vectors()
-            .vector_bucket_name(&store.vector_bucket)
-            .index_name(&store.vector_index)
-            .set_vectors(Some(put_batch))
-            .send()
-            .await
-            .map_err(|e| StoreError::S3Vectors(format_aws_error(&e)))?;
-    }
-
     let mut updated = current;
     updated.embedding_model = embedding_model.map(ToOwned::to_owned);
     updated.index_status = "ready".to_string();
@@ -318,71 +225,18 @@ pub async fn replace_search_chunks(
     Ok(true)
 }
 
-async fn list_all_vector_keys(store: &Store) -> Vec<String> {
-    let mut all_keys = Vec::new();
-    let mut next_token: Option<String> = None;
-    loop {
-        let mut req = store
-            .s3v
-            .list_vectors()
-            .vector_bucket_name(&store.vector_bucket)
-            .index_name(&store.vector_index);
-        if let Some(token) = next_token.take() {
-            req = req.next_token(token);
-        }
-        match req.send().await {
-            Ok(output) => {
-                for v in &output.vectors {
-                    all_keys.push(v.key.clone());
-                }
-                next_token = output.next_token;
-                if next_token.is_none() {
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
-    }
-    all_keys
-}
-
-async fn delete_vectors_for_source(
+async fn delete_search_artifacts_for_source(
     store: &Store,
     video_id: &str,
     source_kind: SearchSourceKind,
 ) -> Result<(), StoreError> {
-    // Derive vector keys from S3 chunk objects (avoids scanning entire vector index)
     let prefix = format!("search-chunks/{video_id}_{}_", source_kind.as_str());
     let chunk_keys = store.list_keys(&prefix).await?;
 
-    let vector_keys: Vec<String> = chunk_keys
-        .iter()
-        .filter_map(|k| {
-            k.strip_prefix("search-chunks/")
-                .and_then(|s| s.strip_suffix(".json"))
-                .map(|s| s.to_string())
-        })
-        .collect();
-
-    // Batch delete vectors (up to 500 per call)
-    for batch in vector_keys.chunks(500) {
-        let mut req = store
-            .s3v
-            .delete_vectors()
-            .vector_bucket_name(&store.vector_bucket)
-            .index_name(&store.vector_index);
-        for key in batch {
-            req = req.keys(key);
-        }
-        req.send().await.ok();
-    }
-
-    // Clean up S3 chunk objects
     for key in &chunk_keys {
         store.delete_key(key).await.ok();
     }
 
-    // Clean up S3 bundles
     let bundle_prefix = format!("search-bundles/{}_{}_", video_id, source_kind.as_str());
     let bundle_keys = store.list_keys(&bundle_prefix).await?;
     for key in &bundle_keys {
@@ -392,12 +246,12 @@ async fn delete_vectors_for_source(
     Ok(())
 }
 
-pub(crate) async fn delete_vectors_for_video(
+pub(crate) async fn delete_search_artifacts_for_video(
     store: &Store,
     video_id: &str,
 ) -> Result<(), StoreError> {
-    delete_vectors_for_source(store, video_id, SearchSourceKind::Summary).await?;
-    delete_vectors_for_source(store, video_id, SearchSourceKind::Transcript).await
+    delete_search_artifacts_for_source(store, video_id, SearchSourceKind::Summary).await?;
+    delete_search_artifacts_for_source(store, video_id, SearchSourceKind::Transcript).await
 }
 
 pub async fn load_search_material(
@@ -577,118 +431,14 @@ pub async fn list_search_progress_materials(
 }
 
 pub async fn search_vector_candidates(
-    store: &Store,
-    query_embedding: &str,
+    _store: &Store,
+    _query_embedding: &str,
     _embedding_model: &str,
-    source_kind: Option<SearchSourceKind>,
-    channel_id: Option<&str>,
-    limit: usize,
+    _source_kind: Option<SearchSourceKind>,
+    _channel_id: Option<&str>,
+    _limit: usize,
 ) -> Result<Vec<SearchCandidate>, StoreError> {
-    let embedding: Vec<f32> = serde_json::from_str(query_embedding).unwrap_or_default();
-    if embedding.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let top_k = limit.clamp(1, 100);
-
-    let mut req = store
-        .s3v
-        .query_vectors()
-        .vector_bucket_name(&store.vector_bucket)
-        .index_name(&store.vector_index)
-        .query_vector(aws_sdk_s3vectors::types::VectorData::Float32(embedding))
-        .top_k(top_k as i32)
-        .return_metadata(true);
-
-    // Server-side filters on filterable metadata fields.
-    // channel_id was added to metadata in a later release - old vectors without it
-    // will be excluded by this filter until re-indexed (acceptable transition behaviour).
-    let mut filter_map = std::collections::HashMap::new();
-    if let Some(kind) = source_kind {
-        filter_map.insert(
-            "source_kind".to_string(),
-            Document::String(kind.as_str().to_string()),
-        );
-    }
-    if let Some(cid) = channel_id {
-        filter_map.insert("channel_id".to_string(), Document::String(cid.to_string()));
-    }
-    if !filter_map.is_empty() {
-        req = req.filter(Document::Object(filter_map));
-    }
-
-    let vectors = match req.send().await {
-        Ok(output) => output.vectors,
-        Err(err) => {
-            tracing::debug!(error = %format_aws_error(&err), "vector search unavailable");
-            return Ok(Vec::new());
-        }
-    };
-
-    // Collect unique video IDs from results, then fetch only those
-    let video_ids: std::collections::HashSet<String> = vectors
-        .iter()
-        .filter_map(|v| {
-            v.metadata
-                .as_ref()
-                .and_then(|m| get_doc_string(m, "video_id"))
-        })
-        .collect();
-
-    let video_map =
-        super::videos::get_videos(store, &video_ids.into_iter().collect::<Vec<_>>(), false).await?;
-    let mut channel_map: std::collections::HashMap<String, crate::models::CanonicalChannelRecord> =
-        std::collections::HashMap::new();
-
-    let channel_ids: std::collections::HashSet<String> =
-        video_map.values().map(|v| v.channel_id.clone()).collect();
-    for cid in channel_ids {
-        if !channel_map.contains_key(&cid) {
-            if let Some(ch) = super::channels::get_canonical_channel(store, &cid).await? {
-                channel_map.insert(ch.id.clone(), ch);
-            }
-        }
-    }
-
-    let mut candidates = Vec::new();
-    for v in vectors {
-        let empty_doc = Document::Object(Default::default());
-        let meta = v.metadata.as_ref().unwrap_or(&empty_doc);
-
-        let vid = get_doc_string(meta, "video_id").unwrap_or_default();
-        let sk = get_doc_string(meta, "source_kind").unwrap_or_default();
-
-        let Some(video) = video_map.get(&vid) else {
-            continue;
-        };
-        let ch = channel_map.get(&video.channel_id);
-
-        let start_sec = match meta {
-            Document::Object(map) => map.get("start_sec").and_then(|d| match d {
-                Document::Number(n) => Some(n.to_f64_lossy() as f32),
-                _ => None,
-            }),
-            _ => None,
-        };
-
-        candidates.push(SearchCandidate {
-            chunk_id: v.key.clone(),
-            video_id: vid,
-            channel_id: video.channel_id.clone(),
-            channel_name: ch.map(|c| c.name.clone()).unwrap_or_default(),
-            video_title: video.title.clone(),
-            source_kind: SearchSourceKind::from_db_value(&sk),
-            section_title: get_doc_string(meta, "section_title"),
-            chunk_text: get_doc_string(meta, "chunk_text").unwrap_or_default(),
-            published_at: video.published_at.to_rfc3339(),
-            start_sec,
-        });
-
-        if candidates.len() >= limit {
-            break;
-        }
-    }
-    Ok(candidates)
+    Ok(Vec::new())
 }
 
 pub async fn search_exact_global_candidates(
@@ -745,30 +495,19 @@ pub async fn prune_stale_search_rows(_store: &Store, _limit: usize) -> Result<us
 }
 
 pub async fn has_vector_index(_store: &Store) -> Result<bool, StoreError> {
-    Ok(true)
+    Ok(false)
 }
 
 pub async fn ensure_vector_index(_store: &Store) -> Result<(), StoreError> {
-    Ok(())
+    Err(StoreError::Other(
+        "vector search is disabled in the GCS-only runtime".to_string(),
+    ))
 }
 
 pub async fn reset_search_projection(store: &Store) -> Result<(), StoreError> {
     store.delete_prefix("search-sources/").await?;
     store.delete_prefix("search-chunks/").await?;
     store.delete_prefix("search-bundles/").await?;
-
-    let all_keys = list_all_vector_keys(store).await;
-    for batch in all_keys.chunks(500) {
-        let mut req = store
-            .s3v
-            .delete_vectors()
-            .vector_bucket_name(&store.vector_bucket)
-            .index_name(&store.vector_index);
-        for key in batch {
-            req = req.keys(key);
-        }
-        req.send().await.ok();
-    }
     Ok(())
 }
 

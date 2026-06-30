@@ -75,7 +75,9 @@ describe("flushPendingStreamEvent", () => {
   it("normalizes technical error payloads before surfacing them", () => {
     const pendingEvent = {
       eventName: "error",
-      dataLines: [JSON.stringify({ message: "Polly TTS is not configured" })],
+      dataLines: [
+        JSON.stringify({ message: "Text-to-Speech is not configured" }),
+      ],
     };
     let receivedMessage: string | null = null;
 

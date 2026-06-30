@@ -10,10 +10,6 @@ terraform {
       source  = "hashicorp/google-beta"
       version = "~> 6.0"
     }
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.24"
-    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.13"
@@ -37,8 +33,4 @@ provider "google-beta" {
   project               = var.project_id
   region                = var.region
   user_project_override = true
-}
-
-provider "aws" {
-  region = var.aws_region
 }

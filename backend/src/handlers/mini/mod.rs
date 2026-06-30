@@ -114,7 +114,7 @@ async fn load_summary_items_for_videos(
         return Ok(Vec::new());
     }
 
-    let semaphore = Arc::new(Semaphore::new(db::MAX_CONCURRENT_S3_OPS));
+    let semaphore = Arc::new(Semaphore::new(db::MAX_CONCURRENT_OBJECT_STORE_OPS));
     let mut join_set: JoinSet<Result<Option<MiniSummaryItem>, db::StoreError>> = JoinSet::new();
 
     for video in videos {

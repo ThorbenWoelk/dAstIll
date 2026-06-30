@@ -1,5 +1,4 @@
 pub mod audit;
-pub mod aws_auth;
 pub mod cache_headers;
 pub mod config;
 pub mod db;
@@ -9,6 +8,7 @@ pub mod library;
 pub mod local_env;
 pub mod logging;
 pub mod models;
+pub mod object_store;
 pub mod openapi;
 pub mod read_cache;
 pub mod routes;

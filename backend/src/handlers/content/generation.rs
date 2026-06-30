@@ -265,7 +265,7 @@ pub async fn update_summary(
 
 /// Persist transcript status after extraction failure **before** returning to callers
 /// (e.g. the queue worker) that increment `retry_count`. A previous `tokio::spawn` here
-/// raced S3 writes and left rows stuck in `loading` with `retry_count >= MAX`, which
+/// raced object-store writes and left rows stuck in `loading` with `retry_count >= MAX`, which
 /// `next_queue_task` then skips forever.
 async fn apply_transcript_error(
     state: &AppState,

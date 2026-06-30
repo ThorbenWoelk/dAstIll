@@ -7,7 +7,7 @@ use super::{
     summary_needs_evaluation_filter, user_scoped_evaluation_filter_allows,
     video_matches_channel_scope, video_visible_in_list,
 };
-use crate::db::{MAX_CONCURRENT_S3_OPS, QueueFilter};
+use crate::db::{MAX_CONCURRENT_OBJECT_STORE_OPS, QueueFilter};
 use crate::models::{ContentStatus, Summary, UserVideoState, Video};
 
 fn build_video(transcript_status: ContentStatus, summary_status: ContentStatus) -> Video {
@@ -244,21 +244,21 @@ fn others_scope_includes_only_unsubscribed_channel_videos() {
 }
 
 // ---------------------------------------------------------------------------
-// MAX_CONCURRENT_S3_OPS constant
+// MAX_CONCURRENT_OBJECT_STORE_OPS constant
 // ---------------------------------------------------------------------------
 
 #[test]
-fn max_concurrent_s3_ops_is_within_cloud_run_bounds() {
-    let max_concurrent_s3_ops = std::hint::black_box(MAX_CONCURRENT_S3_OPS);
+fn max_concurrent_object_store_ops_is_within_cloud_run_bounds() {
+    let max_concurrent_object_store_ops = std::hint::black_box(MAX_CONCURRENT_OBJECT_STORE_OPS);
 
     // Must be between 8 and 16 for 1 vCPU / 512 MiB Cloud Run
     assert!(
-        max_concurrent_s3_ops >= 8,
-        "semaphore bound too low: {max_concurrent_s3_ops}"
+        max_concurrent_object_store_ops >= 8,
+        "semaphore bound too low: {max_concurrent_object_store_ops}"
     );
     assert!(
-        max_concurrent_s3_ops <= 16,
-        "semaphore bound too high: {max_concurrent_s3_ops}"
+        max_concurrent_object_store_ops <= 16,
+        "semaphore bound too high: {max_concurrent_object_store_ops}"
     );
 }
 
@@ -364,12 +364,12 @@ fn oldest_ready_date_respects_sync_floor() {
 }
 
 // ---------------------------------------------------------------------------
-// Integration tests — require live S3 backend
+// Integration tests — require live object-store backend
 // ---------------------------------------------------------------------------
 
 /// Verifies that load_all returns all objects in parallel (correct results).
 #[tokio::test]
-#[ignore] // requires live S3 backend: cargo test -- --ignored
+#[ignore] // requires live object-store backend: cargo test -- --ignored
 async fn load_all_parallel_returns_correct_results() {
     let store = crate::db::Store::for_test().await;
     // Insert a known set of videos, then load_all and compare counts.
@@ -379,7 +379,7 @@ async fn load_all_parallel_returns_correct_results() {
 
 /// Verifies that bulk_insert_videos inserts in parallel and returns correct count.
 #[tokio::test]
-#[ignore] // requires live S3 backend
+#[ignore] // requires live object-store backend
 async fn bulk_insert_parallel_returns_inserted_count() {
     use crate::db::bulk_insert_videos;
     let store = crate::db::Store::for_test().await;
@@ -400,10 +400,10 @@ async fn bulk_insert_parallel_returns_inserted_count() {
     assert_eq!(count, 5);
 }
 
-/// Verifies that get_video with include_summary=false does not fetch the summary S3 object.
+/// Verifies that get_video with include_summary=false does not fetch the summary object.
 /// Evidence: video returned without quality_score set from summary, saving one GET.
 #[tokio::test]
-#[ignore] // requires live S3 backend
+#[ignore] // requires live object-store backend
 async fn get_video_without_summary_skips_summary_fetch() {
     use crate::db::{get_video, insert_video};
     let store = crate::db::Store::for_test().await;
@@ -418,7 +418,7 @@ async fn get_video_without_summary_skips_summary_fetch() {
         .await
         .expect("insert should succeed");
 
-    // With include_summary=false, no summary S3 GET is issued.
+    // With include_summary=false, no summary object-store GET is issued.
     let fetched = get_video(&store, &video.id, false)
         .await
         .expect("get_video should succeed");
@@ -427,10 +427,10 @@ async fn get_video_without_summary_skips_summary_fetch() {
     assert_eq!(fetched.unwrap().quality_score, None);
 }
 
-/// Verifies that build_channel_snapshot_data loads videos exactly once from S3.
+/// Verifies that build_channel_snapshot_data loads videos exactly once from the object store.
 /// (Structural test: load_workspace_bootstrap_data drives build_channel_snapshot_data.)
 #[tokio::test]
-#[ignore] // requires live S3 backend
+#[ignore] // requires live object-store backend
 async fn channel_snapshot_loads_video_data_once() {
     use crate::db::{insert_channel, insert_video, load_channel_snapshot_data};
     let store = crate::db::Store::for_test().await;

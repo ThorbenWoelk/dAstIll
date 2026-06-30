@@ -21,9 +21,7 @@ Terraform manages:
 - Firebase project resources, web app, frontend Hosting, and docs Hosting
 - GCP service accounts and IAM
 - GCP Secret Manager secret containers and IAM bindings
-- AWS S3 bucket for data storage
-- AWS S3 Vectors bucket and index for semantic search
-- AWS IAM role for GCP Workload Identity Federation
+- Google Cloud Storage bucket for app data and runtime cache objects
 - GitHub Actions infrastructure permissions
 - optional BigQuery billing export prerequisites
 - optional Cloud Billing alert budgets
@@ -35,34 +33,24 @@ The billing export and billing budget resources are optional because dAstIll can
 without them. They are enabled only when the matching Terraform variables are set, so local,
 staging, or personal projects can skip extra billing-account permissions and cost-reporting setup.
 
-## Cross-Cloud Authentication
+## GCP Authentication
 
 ### Backend Runtime
 
-The backend runs on Cloud Run and accesses AWS S3 and S3 Vectors through GCP to AWS Workload
-Identity Federation.
+The backend runs on Cloud Run and accesses Google Cloud Storage with the Cloud Run service
+account through Application Default Credentials.
 
-1. The AWS role `dastill-gcp-backend` trusts the backend GCP service account.
-2. Cloud Run receives the backend AWS federation config.
-3. The backend exchanges its GCP identity for AWS temporary credentials.
-4. S3 and S3 Vectors calls use those AWS credentials.
-
-Local development uses shared machine-local AWS credentials. See
+Local development uses ADC or the explicit in-memory smoke-test provider. See
 [Local Development](/operations/local-development).
 
 ### Infra CI
 
-Terraform in GitHub Actions uses a separate trust path.
+Terraform in GitHub Actions uses GitHub OIDC to GCP Workload Identity Federation.
 
 1. GitHub Actions requests an OIDC token from `token.actions.githubusercontent.com`.
-2. AWS trusts that provider for this repository.
-3. `infra.yml` assumes the AWS role `dastill-github-terraform`.
-4. Terraform applies AWS resources with short-lived CI credentials.
-
-GCP CI auth uses GitHub OIDC to GCP Workload Identity Federation and the `dastill-github-sa`
-service account.
-
-Do not reuse the backend runtime AWS role for GitHub CI.
+2. GCP Workload Identity Federation trusts that repository identity.
+3. `infra.yml` uses the `dastill-github-sa` service account.
+4. Terraform applies GCP resources with short-lived CI credentials.
 
 ## Secrets
 
@@ -105,10 +93,6 @@ gcloud secrets versions add <secret-name> \
 Some API keys are project-scoped. When the target GCP project changes, create fresh keys in that
 project, add new Secret Manager versions, and redeploy the backend.
 
-Bootstrap edge: the first creation of the AWS GitHub OIDC provider and `dastill-github-terraform`
-role must happen from an already authenticated AWS context. After that, CI owns the recurring
-Terraform path.
-
 ### Retire A Secret
 
 Secret lifecycle stays in IaC.
@@ -128,10 +112,10 @@ build-time env values.
 
 Backend runtime config includes:
 
-- AWS storage values
-- AWS federation values
-- search, model, reranker, HyDE, and chat guardrail values
+- GCS data bucket name
+- search, model, and chat guardrail values
 - ingestion values
+- optional Google Cloud Text-to-Speech values
 - optional ASR values
 - optional Databricks values
 - log level
@@ -187,7 +171,7 @@ backend still validates and deploys so `dastill-mini` remains available.
 The backend keeps a local libSQL cache/index and in-process workers. The production instance cap and
 the scale-out boundary live in [Runtime Limits](/operations/runtime-limits#deployment-capacity).
 
-On startup, the backend restores or rebuilds its local libSQL file from S3-backed runtime cache
+On startup, the backend restores or rebuilds its local libSQL file from GCS-backed runtime cache
 objects.
 
 ## Podcast ASR
@@ -262,6 +246,7 @@ Terraform can create monthly alert budgets when `billing_budgets_enabled = true`
 
 - one all-service budget for each configured dAstIll project
 - one Cloud Run service-scoped budget for each configured dAstIll project
+- one Cloud Storage service-scoped budget for each configured dAstIll project
 
 The primary `project_id` is always included. Add other projects that run dAstIll Cloud Run services
 to `billing_budget_project_ids`.

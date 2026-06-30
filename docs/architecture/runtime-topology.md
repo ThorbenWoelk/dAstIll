@@ -33,7 +33,7 @@ sequenceDiagram
   participant http as HTTP
 
   boot->>listener: bind PORT early
-  boot->>store: init S3, S3 Vectors, and local libSQL
+  boot->>store: init GCS object store and local libSQL
   boot->>store: restore/reconcile/publish SQL snapshot
   boot->>state: build shared services
   boot->>hydrate: start search progress + FTS hydration
@@ -64,12 +64,12 @@ flowchart TD
 ## Backend Startup Sequence
 
 ```text
-1. Loads env vars and local AWS defaults
+1. Loads env vars
 2. Configures logging and binds the TCP listener for `PORT` early
-3. Parse and validate runtime config from env vars for search, chat, Databricks analytics, Polly TTS, local ASR, security, and Ollama
-4. Configures AWS SDK with the default provider chain or GCP Workload Identity Federation
-5. Connects to S3 data bucket and S3 Vectors bucket
-6. Restores the local libSQL snapshot from S3
+3. Parse and validate runtime config from env vars for search, chat, Databricks analytics, Google TTS, local ASR, security, and Ollama
+4. Configures Google Cloud clients with Application Default Credentials
+5. Connects to the GCS data bucket
+6. Restores the local libSQL snapshot from GCS
 7. Initializes libSQL schema, builds the store, reconciles SQL cache rows, and may publish a fresh snapshot
 8. Builds shared runtime services and `AppState`
 9. Starts search progress hydration
@@ -90,12 +90,12 @@ workers.
 
 | Area            | `AppState` owns                                                                                       |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
-| Storage         | mixed S3 / S3 Vectors / local libSQL store, read cache                                                |
+| Storage         | GCS object store, local libSQL store, read cache                                                      |
 | Security        | runtime auth config, request rate limiter, mobile auth handoff sessions                               |
 | Search          | auto-create-vector-index flag, projection lock, progress tracker, FTS index, search service           |
 | Chat            | chat service, input guardrail service, active chats tracker, chat store lock, anonymous chat quota    |
 | Source services | YouTube service, OpenAlex planner/service, podcast feed service, website ingestion, transcript client |
-| Model services  | optional Polly TTS service, summarizer service, summary evaluator service                             |
+| Model services  | optional Google TTS service, summarizer service, summary evaluator service                            |
 | Observability   | optional Databricks analytics sink                                                                    |
 | Cooldowns       | cloud, YouTube quota, and transcript dependency trackers                                              |
 | Activity gating | user activity tracker                                                                                 |

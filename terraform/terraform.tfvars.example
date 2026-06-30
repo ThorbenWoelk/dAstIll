@@ -1,9 +1,8 @@
-project_id          = "dastill"
-region              = "europe-west3"
-app_name            = "dastill"
-firestore_location_id = "eur3"
+project_id                    = "dastill"
+region                        = "europe-west3"
+app_name                      = "dastill"
+firestore_location_id         = "eur3"
 firebase_web_app_display_name = "dAstIll Web"
-aws_region          = "eu-central-1"
 # Google sign-in is configured in the repo-root firebase.json and deployed with Firebase Auth.
 
 # Optional: enable Terraform-managed prerequisites for Cloud Billing export to BigQuery.
@@ -29,14 +28,14 @@ aws_region          = "eu-central-1"
 # }
 # billing_budget_app_monthly_amount_units = "50"
 # billing_budget_cloud_run_monthly_amount_units = "10"
+# billing_budget_cloud_storage_monthly_amount_units = "5"
 
 # github_wif_pool_id = "github-pool-v1"
 # github_wif_provider_id = "github-provider-v1"
 # github_repository = "ThorbenWoelk/dAstIll"
 
-ollama_url              = "https://your-ollama-proxy.com"
-ollama_summary_model    = "glm-5.1:cloud"
+ollama_url                = "https://your-ollama-proxy.com"
+ollama_summary_model      = "glm-5.1:cloud"
 ollama_default_chat_model = "glm-5.1:cloud"
-summary_evaluator_model = "glm-5.1:cloud"
-ollama_fallback_model   = "qwen3-coder:30b"
-ollama_embedding_model  = "embeddinggemma:latest"
+summary_evaluator_model   = "glm-5.1:cloud"
+ollama_fallback_model     = "qwen3-coder:30b"

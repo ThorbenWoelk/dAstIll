@@ -1,44 +1,20 @@
 use std::sync::Arc;
 
-use aws_sdk_s3::primitives::ByteStream;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-use super::{Store, StoreError, format_aws_error};
+use super::{Store, StoreError};
 
 impl Store {
     pub(crate) async fn get_json<T: for<'de> Deserialize<'de>>(
         &self,
         key: &str,
     ) -> Result<Option<T>, StoreError> {
-        let result = self
-            .s3
-            .get_object()
-            .bucket(&self.data_bucket)
-            .key(key)
-            .send()
-            .await;
-
-        match result {
-            Ok(output) => {
-                let bytes = output
-                    .body
-                    .collect()
-                    .await
-                    .map_err(|e| StoreError::S3(e.to_string()))?
-                    .into_bytes();
-                let value: T = serde_json::from_slice(&bytes)?;
-                Ok(Some(value))
-            }
-            Err(err) => {
-                if err.as_service_error().is_some_and(|e| e.is_no_such_key()) {
-                    Ok(None)
-                } else {
-                    Err(StoreError::S3(format_aws_error(&err)))
-                }
-            }
-        }
+        let Some(bytes) = self.get_bytes(key).await? else {
+            return Ok(None);
+        };
+        Ok(Some(serde_json::from_slice(&bytes)?))
     }
 
     pub(crate) async fn put_json<T: Serialize + ?Sized>(
@@ -47,16 +23,7 @@ impl Store {
         value: &T,
     ) -> Result<(), StoreError> {
         let json = serde_json::to_vec(value)?;
-        self.s3
-            .put_object()
-            .bucket(&self.data_bucket)
-            .key(key)
-            .body(ByteStream::from(json))
-            .content_type("application/json")
-            .send()
-            .await
-            .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
-        Ok(())
+        self.put_bytes(key, &json, "application/json").await
     }
 
     pub(crate) async fn get_json_gz<T: for<'de> Deserialize<'de>>(
@@ -66,38 +33,16 @@ impl Store {
         use flate2::read::GzDecoder;
         use std::io::Read;
 
-        let result = self
-            .s3
-            .get_object()
-            .bucket(&self.data_bucket)
-            .key(key)
-            .send()
-            .await;
-
-        match result {
-            Ok(output) => {
-                let bytes = output
-                    .body
-                    .collect()
-                    .await
-                    .map_err(|e| StoreError::S3(e.to_string()))?
-                    .into_bytes();
-                let mut decoder = GzDecoder::new(&bytes[..]);
-                let mut decompressed = Vec::new();
-                decoder
-                    .read_to_end(&mut decompressed)
-                    .map_err(|e| StoreError::Other(format!("gzip decompression failed: {e}")))?;
-                let value: T = serde_json::from_slice(&decompressed)?;
-                Ok(Some(value))
-            }
-            Err(err) => {
-                if err.as_service_error().is_some_and(|e| e.is_no_such_key()) {
-                    Ok(None)
-                } else {
-                    Err(StoreError::S3(format_aws_error(&err)))
-                }
-            }
-        }
+        let Some(bytes) = self.get_bytes(key).await? else {
+            return Ok(None);
+        };
+        let mut decoder = GzDecoder::new(&bytes[..]);
+        let mut decompressed = Vec::new();
+        decoder
+            .read_to_end(&mut decompressed)
+            .map_err(|e| StoreError::Other(format!("gzip decompression failed: {e}")))?;
+        let value: T = serde_json::from_slice(&decompressed)?;
+        Ok(Some(value))
     }
 
     pub(crate) async fn put_json_gz<T: Serialize + ?Sized>(
@@ -118,45 +63,14 @@ impl Store {
             .finish()
             .map_err(|e| StoreError::Other(format!("gzip compression finish failed: {e}")))?;
 
-        self.s3
-            .put_object()
-            .bucket(&self.data_bucket)
-            .key(key)
-            .body(ByteStream::from(compressed))
-            .content_type("application/x-gzip")
-            .send()
-            .await
-            .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
-        Ok(())
+        self.put_bytes(key, &compressed, "application/x-gzip").await
     }
 
     pub(crate) async fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
-        let result = self
-            .s3
-            .get_object()
-            .bucket(&self.data_bucket)
-            .key(key)
-            .send()
-            .await;
-
-        match result {
-            Ok(output) => {
-                let bytes = output
-                    .body
-                    .collect()
-                    .await
-                    .map_err(|e| StoreError::S3(e.to_string()))?
-                    .into_bytes();
-                Ok(Some(bytes.to_vec()))
-            }
-            Err(err) => {
-                if err.as_service_error().is_some_and(|e| e.is_no_such_key()) {
-                    Ok(None)
-                } else {
-                    Err(StoreError::S3(format_aws_error(&err)))
-                }
-            }
-        }
+        self.objects
+            .get_bytes(key)
+            .await
+            .map_err(|err| StoreError::ObjectStore(err.to_string()))
     }
 
     pub(crate) async fn put_bytes(
@@ -165,65 +79,24 @@ impl Store {
         bytes: &[u8],
         content_type: &str,
     ) -> Result<(), StoreError> {
-        self.s3
-            .put_object()
-            .bucket(&self.data_bucket)
-            .key(key)
-            .body(ByteStream::from(bytes.to_vec()))
-            .content_type(content_type)
-            .send()
+        self.objects
+            .put_bytes(key, bytes, content_type)
             .await
-            .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
-        Ok(())
+            .map_err(|err| StoreError::ObjectStore(err.to_string()))
     }
 
     pub(crate) async fn delete_key(&self, key: &str) -> Result<(), StoreError> {
-        self.s3
-            .delete_object()
-            .bucket(&self.data_bucket)
-            .key(key)
-            .send()
+        self.objects
+            .delete_key(key)
             .await
-            .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
-        Ok(())
+            .map_err(|err| StoreError::ObjectStore(err.to_string()))
     }
 
     pub(crate) async fn list_keys(&self, prefix: &str) -> Result<Vec<String>, StoreError> {
-        let mut keys = Vec::new();
-        let mut continuation_token: Option<String> = None;
-
-        loop {
-            let mut req = self
-                .s3
-                .list_objects_v2()
-                .bucket(&self.data_bucket)
-                .prefix(prefix);
-
-            if let Some(token) = continuation_token.take() {
-                req = req.continuation_token(token);
-            }
-
-            let output = req
-                .send()
-                .await
-                .map_err(|e| StoreError::S3(format_aws_error(&e)))?;
-
-            if let Some(contents) = output.contents {
-                for obj in contents {
-                    if let Some(key) = obj.key {
-                        keys.push(key);
-                    }
-                }
-            }
-
-            if output.is_truncated == Some(true) {
-                continuation_token = output.next_continuation_token;
-            } else {
-                break;
-            }
-        }
-
-        Ok(keys)
+        self.objects
+            .list_keys(prefix)
+            .await
+            .map_err(|err| StoreError::ObjectStore(err.to_string()))
     }
 
     pub(crate) async fn load_all<T: for<'de> Deserialize<'de> + Send + 'static>(
@@ -235,7 +108,7 @@ impl Store {
             return Ok(Vec::new());
         }
 
-        let semaphore = Arc::new(Semaphore::new(super::MAX_CONCURRENT_S3_OPS));
+        let semaphore = Arc::new(Semaphore::new(super::MAX_CONCURRENT_OBJECT_STORE_OPS));
         let mut join_set: JoinSet<Result<Option<T>, StoreError>> = JoinSet::new();
 
         for key in keys {
@@ -254,7 +127,9 @@ impl Store {
                 Ok(Ok(None)) => {}
                 Ok(Err(e)) => return Err(e),
                 Err(e) => {
-                    return Err(StoreError::S3(format!("parallel fetch task error: {e}")));
+                    return Err(StoreError::ObjectStore(format!(
+                        "parallel fetch task error: {e}"
+                    )));
                 }
             }
         }
@@ -262,24 +137,10 @@ impl Store {
     }
 
     pub(crate) async fn key_exists(&self, key: &str) -> Result<bool, StoreError> {
-        let result = self
-            .s3
-            .head_object()
-            .bucket(&self.data_bucket)
-            .key(key)
-            .send()
-            .await;
-
-        match result {
-            Ok(_) => Ok(true),
-            Err(err) => {
-                if err.as_service_error().is_some_and(|e| e.is_not_found()) {
-                    Ok(false)
-                } else {
-                    Err(StoreError::S3(format_aws_error(&err)))
-                }
-            }
-        }
+        self.objects
+            .key_exists(key)
+            .await
+            .map_err(|err| StoreError::ObjectStore(err.to_string()))
     }
 
     pub(crate) async fn delete_prefix(&self, prefix: &str) -> Result<usize, StoreError> {

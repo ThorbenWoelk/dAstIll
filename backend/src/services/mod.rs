@@ -39,6 +39,6 @@ pub use source_sync::{persist_source_profile_and_channel, sync_source_profile};
 pub use summarizer::SummarizerService;
 pub use summary_evaluator::SummaryEvaluatorService;
 pub use transcript::TranscriptService;
-pub use tts::PollyTtsService;
+pub use tts::TextToSpeechService;
 pub use website::{WebsitePageMaterial, WebsiteService};
 pub use youtube::{DataApiKeyValidation, YouTubeService};

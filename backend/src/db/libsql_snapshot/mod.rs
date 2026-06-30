@@ -5,7 +5,6 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use aws_sdk_s3::primitives::ByteStream;
 use chrono::{SecondsFormat, Utc};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
@@ -14,8 +13,9 @@ use std::io::{Read, Write};
 use tokio::sync::{Mutex, Notify};
 
 use crate::models::{CanonicalVideoRecord, ContentStatus, UserPreferences};
+use crate::object_store::ObjectStore;
 
-use super::{StoreError, format_aws_error};
+use super::StoreError;
 
 const MANIFEST_KEY: &str = "runtime-cache/libsql/current.json";
 const SOURCE_GENERATION_KEY: &str = "runtime-cache/libsql/source-generation.json";
@@ -145,23 +145,17 @@ pub struct LibsqlSourceGenerationTracker {
 }
 
 struct LibsqlSourceGenerationTrackerInner {
-    s3: aws_sdk_s3::Client,
-    bucket: String,
+    objects: Arc<dyn ObjectStore>,
     current_generation: AtomicU64,
     lock: Mutex<()>,
 }
 
 impl LibsqlSourceGenerationTracker {
-    pub async fn new(
-        s3: aws_sdk_s3::Client,
-        bucket: impl Into<String>,
-    ) -> Result<Self, StoreError> {
-        let bucket = bucket.into();
-        let current_generation = current_generation_value(&s3, &bucket).await?;
+    pub async fn new(objects: Arc<dyn ObjectStore>) -> Result<Self, StoreError> {
+        let current_generation = current_generation_value(objects.as_ref()).await?;
         Ok(Self {
             inner: Arc::new(LibsqlSourceGenerationTrackerInner {
-                s3,
-                bucket,
+                objects,
                 current_generation: AtomicU64::new(current_generation),
                 lock: Mutex::new(()),
             }),
@@ -181,8 +175,8 @@ impl LibsqlSourceGenerationTracker {
             created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
             operations,
         };
-        put_json(&self.inner.s3, &self.inner.bucket, &delta_key(next), &delta).await?;
-        store_source_generation_marker(&self.inner.s3, &self.inner.bucket, next).await?;
+        put_json(self.inner.objects.as_ref(), &delta_key(next), &delta).await?;
+        store_source_generation_marker(self.inner.objects.as_ref(), next).await?;
         self.inner.current_generation.store(next, Ordering::Release);
         Ok(next)
     }
@@ -194,8 +188,7 @@ pub struct LibsqlSnapshotPublisher {
 }
 
 struct LibsqlSnapshotPublisherInner {
-    s3: aws_sdk_s3::Client,
-    bucket: String,
+    objects: Arc<dyn ObjectStore>,
     conn: libsql::Connection,
     db_path: PathBuf,
     debounce: Duration,
@@ -204,26 +197,19 @@ struct LibsqlSnapshotPublisherInner {
 }
 
 impl LibsqlSnapshotPublisher {
-    pub fn new(
-        s3: aws_sdk_s3::Client,
-        bucket: impl Into<String>,
-        conn: libsql::Connection,
-        db_path: PathBuf,
-    ) -> Self {
-        Self::new_with_debounce(s3, bucket, conn, db_path, SNAPSHOT_PUBLISH_DEBOUNCE)
+    pub fn new(objects: Arc<dyn ObjectStore>, conn: libsql::Connection, db_path: PathBuf) -> Self {
+        Self::new_with_debounce(objects, conn, db_path, SNAPSHOT_PUBLISH_DEBOUNCE)
     }
 
     fn new_with_debounce(
-        s3: aws_sdk_s3::Client,
-        bucket: impl Into<String>,
+        objects: Arc<dyn ObjectStore>,
         conn: libsql::Connection,
         db_path: PathBuf,
         debounce: Duration,
     ) -> Self {
         let publisher = Self {
             inner: Arc::new(LibsqlSnapshotPublisherInner {
-                s3,
-                bucket: bucket.into(),
+                objects,
                 conn,
                 db_path,
                 debounce,
@@ -267,8 +253,7 @@ async fn run_snapshot_publish_worker(inner: Arc<LibsqlSnapshotPublisherInner>) {
         }
 
         match publish_libsql_snapshot(
-            &inner.s3,
-            &inner.bucket,
+            inner.objects.as_ref(),
             &inner.conn,
             &inner.db_path,
             env!("CARGO_PKG_VERSION"),
@@ -290,30 +275,28 @@ async fn run_snapshot_publish_worker(inner: Arc<LibsqlSnapshotPublisherInner>) {
 }
 
 pub async fn restore_libsql_snapshot(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     db_path: &Path,
 ) -> LibsqlSnapshotRestore {
-    match try_restore_libsql_snapshot(s3, bucket, db_path).await {
+    match try_restore_libsql_snapshot(objects, db_path).await {
         Ok(Some((base_generation, target_generation))) => LibsqlSnapshotRestore::Restored {
             base_generation,
             target_generation,
         },
         Ok(None) => LibsqlSnapshotRestore::Missing,
         Err(err) => {
-            tracing::warn!(error = %err, "libSQL snapshot restore failed - falling back to S3 rebuild");
+            tracing::warn!(error = %err, "libSQL snapshot restore failed - falling back to object-store rebuild");
             LibsqlSnapshotRestore::Failed
         }
     }
 }
 
 async fn try_restore_libsql_snapshot(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     db_path: &Path,
 ) -> Result<Option<(u64, u64)>, StoreError> {
-    let Some(manifest) = get_json::<LibsqlSnapshotManifest>(s3, bucket, MANIFEST_KEY).await? else {
-        tracing::info!("libSQL snapshot manifest not found - using S3 rebuild path");
+    let Some(manifest) = get_json::<LibsqlSnapshotManifest>(objects, MANIFEST_KEY).await? else {
+        tracing::info!("libSQL snapshot manifest not found - using object-store rebuild path");
         return Ok(None);
     };
 
@@ -321,25 +304,25 @@ async fn try_restore_libsql_snapshot(
         tracing::warn!(
             manifest_schema_version = manifest.schema_version,
             expected_schema_version = SNAPSHOT_SCHEMA_VERSION,
-            "libSQL snapshot schema version mismatch - using S3 rebuild path"
+            "libSQL snapshot schema version mismatch - using object-store rebuild path"
         );
         return Ok(None);
     }
 
-    let current_source_state = load_source_state(s3, bucket).await?;
+    let current_source_state = load_source_state(objects).await?;
     if current_source_state.generation < manifest.source_state.generation {
         tracing::warn!(
             manifest_generation = manifest.source_state.generation,
             current_generation = current_source_state.generation,
-            "libSQL source generation regressed behind snapshot manifest - using S3 rebuild path"
+            "libSQL source generation regressed behind snapshot manifest - using object-store rebuild path"
         );
         return Ok(None);
     }
 
-    let Some(compressed) = get_bytes(s3, bucket, &manifest.snapshot_key).await? else {
+    let Some(compressed) = get_bytes(objects, &manifest.snapshot_key).await? else {
         tracing::warn!(
             snapshot_key = %manifest.snapshot_key,
-            "libSQL snapshot object missing - using S3 rebuild path"
+            "libSQL snapshot object missing - using object-store rebuild path"
         );
         return Ok(None);
     };
@@ -378,13 +361,12 @@ async fn try_restore_libsql_snapshot(
 }
 
 pub async fn publish_libsql_snapshot(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     conn: &libsql::Connection,
     db_path: &Path,
     app_version: &str,
 ) -> Result<LibsqlSnapshotManifest, StoreError> {
-    let source_state = load_source_state(s3, bucket).await?;
+    let source_state = load_source_state(objects).await?;
     checkpoint_libsql_file(conn).await?;
     let db_bytes = tokio::fs::read(db_path)
         .await
@@ -408,10 +390,10 @@ pub async fn publish_libsql_snapshot(
         source_state,
     };
 
-    put_bytes(s3, bucket, &snapshot_key, compressed, "application/gzip").await?;
-    put_json(s3, bucket, MANIFEST_KEY, &manifest).await?;
+    put_bytes(objects, &snapshot_key, &compressed, "application/gzip").await?;
+    put_json(objects, MANIFEST_KEY, &manifest).await?;
     if let Err(err) =
-        prune_delta_log_up_to_generation(s3, bucket, manifest.source_state.generation).await
+        prune_delta_log_up_to_generation(objects, manifest.source_state.generation).await
     {
         tracing::warn!(
             error = %err,
@@ -432,8 +414,7 @@ pub async fn publish_libsql_snapshot(
 }
 
 pub async fn replay_libsql_snapshot_deltas(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     conn: &libsql::Connection,
     from_generation: u64,
     to_generation: u64,
@@ -445,8 +426,7 @@ pub async fn replay_libsql_snapshot_deltas(
     let mut applied_generations = 0usize;
     for generation in (from_generation + 1)..=to_generation {
         let delta_key = delta_key(generation);
-        let Some(delta) = get_json::<LibsqlSnapshotDeltaRecord>(s3, bucket, &delta_key).await?
-        else {
+        let Some(delta) = get_json::<LibsqlSnapshotDeltaRecord>(objects, &delta_key).await? else {
             return Err(StoreError::Other(format!(
                 "missing libSQL delta record for generation {generation}"
             )));
@@ -599,48 +579,25 @@ fn content_status_to_str(status: ContentStatus) -> &'static str {
 }
 
 async fn prune_delta_log_up_to_generation(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     up_to_generation: u64,
 ) -> Result<(), StoreError> {
-    let mut continuation_token: Option<String> = None;
+    let keys = objects
+        .list_keys(DELTA_PREFIX)
+        .await
+        .map_err(|err| StoreError::ObjectStore(err.to_string()))?;
 
-    loop {
-        let mut request = s3.list_objects_v2().bucket(bucket).prefix(DELTA_PREFIX);
-        if let Some(token) = continuation_token.take() {
-            request = request.continuation_token(token);
+    for key in keys {
+        let Some(generation) = delta_generation_from_key(&key) else {
+            continue;
+        };
+        if generation > up_to_generation {
+            continue;
         }
-
-        let output = request
-            .send()
+        objects
+            .delete_key(&key)
             .await
-            .map_err(|err| StoreError::S3(format_aws_error(&err)))?;
-
-        if let Some(contents) = output.contents {
-            for object in contents {
-                let Some(key) = object.key else {
-                    continue;
-                };
-                let Some(generation) = delta_generation_from_key(&key) else {
-                    continue;
-                };
-                if generation > up_to_generation {
-                    continue;
-                }
-                s3.delete_object()
-                    .bucket(bucket)
-                    .key(key)
-                    .send()
-                    .await
-                    .map_err(|err| StoreError::S3(format_aws_error(&err)))?;
-            }
-        }
-
-        if output.is_truncated == Some(true) {
-            continuation_token = output.next_continuation_token;
-        } else {
-            break;
-        }
+            .map_err(|err| StoreError::ObjectStore(err.to_string()))?;
     }
 
     Ok(())
@@ -698,31 +655,26 @@ async fn remove_if_exists(path: &Path) -> Result<(), StoreError> {
 }
 
 async fn get_json<T: for<'de> Deserialize<'de>>(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     key: &str,
 ) -> Result<Option<T>, StoreError> {
-    let Some(bytes) = get_bytes(s3, bucket, key).await? else {
+    let Some(bytes) = get_bytes(objects, key).await? else {
         return Ok(None);
     };
     Ok(Some(serde_json::from_slice(&bytes)?))
 }
 
 async fn load_source_state(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
 ) -> Result<LibsqlSnapshotSourceState, StoreError> {
     Ok(LibsqlSnapshotSourceState {
-        generation: current_generation_value(s3, bucket).await?,
+        generation: current_generation_value(objects).await?,
     })
 }
 
-async fn current_generation_value(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
-) -> Result<u64, StoreError> {
+async fn current_generation_value(objects: &dyn ObjectStore) -> Result<u64, StoreError> {
     let Some(marker) =
-        get_json::<LibsqlSourceGenerationMarker>(s3, bucket, SOURCE_GENERATION_KEY).await?
+        get_json::<LibsqlSourceGenerationMarker>(objects, SOURCE_GENERATION_KEY).await?
     else {
         return Ok(0);
     };
@@ -740,8 +692,7 @@ async fn current_generation_value(
 }
 
 async fn store_source_generation_marker(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     generation: u64,
 ) -> Result<(), StoreError> {
     let marker = LibsqlSourceGenerationMarker {
@@ -749,63 +700,35 @@ async fn store_source_generation_marker(
         generation,
         updated_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
     };
-    put_json(s3, bucket, SOURCE_GENERATION_KEY, &marker).await
+    put_json(objects, SOURCE_GENERATION_KEY, &marker).await
 }
 
 async fn put_json<T: Serialize + ?Sized>(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     key: &str,
     value: &T,
 ) -> Result<(), StoreError> {
     let json = serde_json::to_vec(value)?;
-    put_bytes(s3, bucket, key, json, "application/json").await
+    put_bytes(objects, key, &json, "application/json").await
 }
 
-async fn get_bytes(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
-    key: &str,
-) -> Result<Option<Vec<u8>>, StoreError> {
-    let result = s3.get_object().bucket(bucket).key(key).send().await;
-    match result {
-        Ok(output) => {
-            let bytes = output
-                .body
-                .collect()
-                .await
-                .map_err(|err| StoreError::S3(err.to_string()))?
-                .into_bytes();
-            Ok(Some(bytes.to_vec()))
-        }
-        Err(err) => {
-            if err
-                .as_service_error()
-                .is_some_and(|err| err.is_no_such_key())
-            {
-                Ok(None)
-            } else {
-                Err(StoreError::S3(format_aws_error(&err)))
-            }
-        }
-    }
+async fn get_bytes(objects: &dyn ObjectStore, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
+    objects
+        .get_bytes(key)
+        .await
+        .map_err(|err| StoreError::ObjectStore(err.to_string()))
 }
 
 async fn put_bytes(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
+    objects: &dyn ObjectStore,
     key: &str,
-    bytes: Vec<u8>,
+    bytes: &[u8],
     content_type: &str,
 ) -> Result<(), StoreError> {
-    s3.put_object()
-        .bucket(bucket)
-        .key(key)
-        .body(ByteStream::from(bytes))
-        .content_type(content_type)
-        .send()
+    objects
+        .put_bytes(key, bytes, content_type)
         .await
-        .map_err(|err| StoreError::S3(format_aws_error(&err)))?;
+        .map_err(|err| StoreError::ObjectStore(err.to_string()))?;
     Ok(())
 }
 

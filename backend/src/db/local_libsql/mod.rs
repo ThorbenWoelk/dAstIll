@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
+use crate::object_store::ObjectStore;
 use crate::read_cache::ReadCache;
 use crate::runtime_paths::local_libsql_dir;
 
@@ -38,17 +40,13 @@ pub async fn initialize_local_libsql(
 }
 
 pub async fn initialize_local_libsql_store(
-    s3_client: aws_sdk_s3::Client,
-    s3v_client: aws_sdk_s3vectors::Client,
-    data_bucket: String,
-    vector_bucket: String,
-    vector_index: String,
+    objects: Arc<dyn ObjectStore>,
     port: u16,
 ) -> anyhow::Result<LocalLibsqlStore> {
     let fts_dir = local_libsql_dir(&std::env::temp_dir(), port);
     std::fs::create_dir_all(&fts_dir)?;
     let db_path = fts_dir.join("search-fts.db");
-    let snapshot_restore = restore_libsql_snapshot(&s3_client, &data_bucket, &db_path).await;
+    let snapshot_restore = restore_libsql_snapshot(objects.as_ref(), &db_path).await;
     let (database, conn, shared_db_path) = initialize_local_libsql(&db_path).await?;
     let snapshot_conn = conn.clone();
     let mut replayed_delta_generations = 0usize;
@@ -56,8 +54,7 @@ pub async fn initialize_local_libsql_store(
 
     if let Some((base_generation, target_generation)) = snapshot_restore.replay_range() {
         match replay_libsql_snapshot_deltas(
-            &s3_client,
-            &data_bucket,
+            objects.as_ref(),
             &snapshot_conn,
             base_generation,
             target_generation,
@@ -79,7 +76,7 @@ pub async fn initialize_local_libsql_store(
                     error = %err,
                     base_generation,
                     target_generation,
-                    "libSQL snapshot delta replay failed - clearing local SQL cache for S3 rebuild"
+                    "libSQL snapshot delta replay failed - clearing local SQL cache for object-store rebuild"
                 );
                 reset_local_libsql_cache(&snapshot_conn)
                     .await
@@ -88,25 +85,16 @@ pub async fn initialize_local_libsql_store(
         }
     }
 
-    let source_generation_tracker =
-        LibsqlSourceGenerationTracker::new(s3_client.clone(), data_bucket.clone())
-            .await
-            .map_err(|err| anyhow::anyhow!(err))?;
-    let snapshot_publisher = LibsqlSnapshotPublisher::new(
-        s3_client.clone(),
-        data_bucket.clone(),
-        snapshot_conn.clone(),
-        db_path.clone(),
-    );
+    let source_generation_tracker = LibsqlSourceGenerationTracker::new(objects.clone())
+        .await
+        .map_err(|err| anyhow::anyhow!(err))?;
+    let snapshot_publisher =
+        LibsqlSnapshotPublisher::new(objects.clone(), snapshot_conn.clone(), db_path.clone());
 
     let read_cache = ReadCache::default();
     let store = init_store(
-        s3_client.clone(),
-        s3v_client,
+        objects.clone(),
         conn,
-        data_bucket.clone(),
-        vector_bucket,
-        vector_index,
         read_cache.clone(),
         Some(source_generation_tracker),
         Some(snapshot_publisher),
@@ -116,7 +104,7 @@ pub async fn initialize_local_libsql_store(
 
     let cache_reconcile = reconcile_sql_cache_with_store(&store)
         .await
-        .map_err(|err| anyhow::anyhow!("failed to reconcile SQL cache from S3: {err}"))?;
+        .map_err(|err| anyhow::anyhow!("failed to reconcile SQL cache from object store: {err}"))?;
     tracing::info!(
         bootstrapped_videos = cache_reconcile.bootstrapped_videos,
         exported_videos = cache_reconcile.exported_videos,
@@ -138,8 +126,7 @@ pub async fn initialize_local_libsql_store(
 
     if !snapshot_restore.restored() || cache_reconcile_changed || replayed_delta_generations > 0 {
         if let Err(err) = publish_libsql_snapshot(
-            &s3_client,
-            &data_bucket,
+            objects.as_ref(),
             &snapshot_conn,
             &db_path,
             env!("CARGO_PKG_VERSION"),

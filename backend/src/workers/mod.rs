@@ -211,7 +211,7 @@ async fn fallback_fts_hydration_to_raw_materials(
     true
 }
 
-/// Populate the keyword search index from all ready search chunks stored in S3.
+/// Populate the keyword search index from all ready search chunks stored in the object store.
 /// Called once at startup when the runtime index is empty so keyword search
 /// does not depend on the background worker replaying each source one by one.
 pub async fn populate_fts_index_from_store(state: AppState) {
@@ -244,7 +244,7 @@ pub async fn populate_fts_index_from_store(state: AppState) {
         );
 
         // Pre-load all videos (hits the 120s cache) and all channels in two bulk fetches
-        // instead of one Firestore GET + one S3 GET per video in the loop.
+        // instead of one Firestore GET + one object-store GET per video in the loop.
         let video_map: std::collections::HashMap<String, crate::models::Video> =
             crate::db::load_all_videos(&store)
                 .await

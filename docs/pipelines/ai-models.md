@@ -49,7 +49,7 @@ dAstIll keeps unaffected features available when model or retrieval dependencies
 | Failure                               | Degradation                                        | Detail doc                               |
 | ------------------------------------- | -------------------------------------------------- | ---------------------------------------- |
 | Summarizer unavailable                | generation queue pauses; search and chat continue  | [Summarization](/features/summarization) |
-| Embedding model unavailable           | FTS-only search; chunking and S3 writes continue   | [Search](/features/search)               |
+| Embedding model unavailable           | FTS-only search; chunking and GCS writes continue  | [Search](/features/search)               |
 | Evaluator unavailable or rate-limited | evaluation pauses; generation and search continue  | [Summarization](/features/summarization) |
 | Reranker call fails                   | plain RRF ordering                                 | [Search](/features/search)               |
 | HyDE generation fails                 | raw query embedding                                | [Search](/features/search)               |

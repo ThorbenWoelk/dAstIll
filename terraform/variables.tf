@@ -27,11 +27,6 @@ variable "firebase_authorized_domains_extra" {
   description = "Extra Firebase Auth authorized domains to keep in addition to localhost and the Firebase-hosted project domains."
 }
 
-variable "aws_region" {
-  type        = string
-  default     = "eu-central-1"
-  description = "AWS region for S3 and S3 Vectors"
-}
 variable "firebase_google_client_id" {
   type        = string
   sensitive   = true
@@ -73,7 +68,7 @@ variable "billing_export_dataset_location" {
 variable "billing_budgets_enabled" {
   type        = bool
   default     = false
-  description = "When true, Terraform creates monthly Cloud Billing budgets for the app project and Cloud Run spend."
+  description = "When true, Terraform creates monthly Cloud Billing budgets for app, Cloud Run, and Cloud Storage spend."
 }
 
 variable "billing_budget_project_ids" {
@@ -109,6 +104,12 @@ variable "billing_budget_cloud_run_monthly_amount_units" {
   type        = string
   default     = "10"
   description = "Whole-unit monthly budget amount for Cloud Run spend per configured project, in the billing account currency."
+}
+
+variable "billing_budget_cloud_storage_monthly_amount_units" {
+  type        = string
+  default     = "5"
+  description = "Whole-unit monthly budget amount for Cloud Storage spend per configured project, in the billing account currency."
 }
 
 variable "billing_budget_thresholds" {

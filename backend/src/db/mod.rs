@@ -20,8 +20,8 @@ mod videos;
 
 pub(crate) use crate::read_cache::ReadCache;
 
-/// Maximum number of concurrent S3 operations. Chosen for 1 vCPU / 512 MiB Cloud Run.
-pub(crate) const MAX_CONCURRENT_S3_OPS: usize = 12;
+/// Maximum number of concurrent object-store operations. Chosen for 1 vCPU / 512 MiB Cloud Run.
+pub(crate) const MAX_CONCURRENT_OBJECT_STORE_OPS: usize = 12;
 
 pub use channels::*;
 pub use content::*;
@@ -42,14 +42,13 @@ pub use video_info::*;
 pub use videos::*;
 
 use crate::models::{Channel, Video};
+use crate::object_store::ObjectStore;
 use crate::search::SearchSourceKind;
-use aws_sdk_s3::error::SdkError;
-use aws_smithy_types::error::metadata::ProvideErrorMetadata;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum StoreError {
-    S3(String),
-    S3Vectors(String),
+    ObjectStore(String),
     Serialization(String),
     NotFound(String),
     Other(String),
@@ -58,8 +57,7 @@ pub enum StoreError {
 impl std::fmt::Display for StoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::S3(msg) => write!(f, "S3 error: {msg}"),
-            Self::S3Vectors(msg) => write!(f, "S3 Vectors error: {msg}"),
+            Self::ObjectStore(msg) => write!(f, "object store error: {msg}"),
             Self::Serialization(msg) => write!(f, "serialization error: {msg}"),
             Self::NotFound(msg) => write!(f, "not found: {msg}"),
             Self::Other(msg) => write!(f, "{msg}"),
@@ -77,12 +75,8 @@ impl From<serde_json::Error> for StoreError {
 
 #[derive(Clone)]
 pub struct Store {
-    pub(crate) s3: aws_sdk_s3::Client,
-    pub(crate) s3v: aws_sdk_s3vectors::Client,
+    pub(crate) objects: Arc<dyn ObjectStore>,
     pub(crate) sql: libsql::Connection,
-    pub(crate) data_bucket: String,
-    pub(crate) vector_bucket: String,
-    pub(crate) vector_index: String,
     pub(crate) read_cache: ReadCache,
     pub(crate) source_generation_tracker: Option<LibsqlSourceGenerationTracker>,
     pub(crate) snapshot_publisher: Option<LibsqlSnapshotPublisher>,
@@ -282,44 +276,19 @@ pub enum QueueFilter {
 }
 
 pub async fn init_store(
-    s3: aws_sdk_s3::Client,
-    s3v: aws_sdk_s3vectors::Client,
+    objects: Arc<dyn ObjectStore>,
     sql: libsql::Connection,
-    data_bucket: String,
-    vector_bucket: String,
-    vector_index: String,
     read_cache: ReadCache,
     source_generation_tracker: Option<LibsqlSourceGenerationTracker>,
     snapshot_publisher: Option<LibsqlSnapshotPublisher>,
 ) -> Result<Store, StoreError> {
     Ok(Store {
-        s3,
-        s3v,
+        objects,
         sql,
-        data_bucket,
-        vector_bucket,
-        vector_index,
         read_cache,
         source_generation_tracker,
         snapshot_publisher,
     })
-}
-
-pub(crate) fn format_aws_error<E, R>(err: &SdkError<E, R>) -> String
-where
-    E: ProvideErrorMetadata + std::fmt::Display,
-{
-    use aws_sdk_s3::operation::RequestId;
-    match err {
-        SdkError::ServiceError(context) => {
-            let meta = context.err().meta();
-            let code = meta.code().unwrap_or("unknown_code");
-            let message = meta.message().unwrap_or("service error");
-            let request_id = meta.request_id().unwrap_or("unknown_request_id");
-            format!("{code}: {message} (Request ID: {request_id})")
-        }
-        _ => format!("{err:#}"),
-    }
 }
 
 #[cfg(test)]

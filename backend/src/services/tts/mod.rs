@@ -1,6 +1,6 @@
-use aws_sdk_polly::{
-    Client as PollyClient,
-    types::{OutputFormat as PollyOutputFormat, TextType as PollyTextType},
+use google_cloud_texttospeech_v1::{
+    client::TextToSpeech,
+    model::{AudioConfig, AudioEncoding, SynthesisInput, VoiceSelectionParams},
 };
 use thiserror::Error;
 
@@ -233,7 +233,7 @@ pub(crate) fn sanitize_markdown_for_tts(input: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn split_ssml_for_polly(input: &str, max_chars: usize) -> Vec<String> {
+fn split_ssml_for_tts(input: &str, max_chars: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
     let mut current_len = 0usize;
@@ -307,10 +307,8 @@ fn split_ssml_for_polly(input: &str, max_chars: usize) -> Vec<String> {
 }
 
 fn wrap_pcm_s16le_mono_to_wav(pcm_s16le_mono: Vec<u8>, sample_rate: u32) -> Vec<u8> {
-    // Polly returns raw PCM bytes for `output_format=pcm`:
-    // - signed 16-bit little endian
-    // - mono
-    // We wrap it into a minimal WAV container so browsers can decode it reliably.
+    // Cloud TTS PCM output is raw signed 16-bit little-endian mono.
+    // Wrap it into a minimal WAV container so browsers can decode it reliably.
     const CHANNELS: u16 = 1;
     const BITS_PER_SAMPLE: u16 = 16;
     const BLOCK_ALIGN: u16 = (CHANNELS * BITS_PER_SAMPLE) / 8;
@@ -344,102 +342,103 @@ fn wrap_pcm_s16le_mono_to_wav(pcm_s16le_mono: Vec<u8>, sample_rate: u32) -> Vec<
 }
 
 #[derive(Debug)]
-pub struct PollyTtsService {
-    client: PollyClient,
-    voice_id: String,
-    engine: String,
+pub struct TextToSpeechService {
+    client: TextToSpeech,
+    voice_name: String,
+    language_code: String,
+    model_name: Option<String>,
+    request_audio_encoding: AudioEncoding,
     output_format: String,
-    sample_rate: String,
+    sample_rate_hertz: i32,
+    wrap_pcm_as_wav: bool,
 }
 
 #[derive(Debug, Error)]
-pub enum PollyTtsError {
+pub enum TextToSpeechError {
     #[error("summary text is empty")]
     EmptyText,
-    #[error("failed to call Amazon Polly API: {0}")]
+    #[error("failed to configure Google Cloud Text-to-Speech: {0}")]
+    Config(String),
+    #[error("failed to call Google Cloud Text-to-Speech API: {0}")]
     Request(String),
 }
 
-impl PollyTtsService {
-    pub fn new(
-        client: PollyClient,
-        voice_id: String,
-        engine: String,
-        output_format: String,
-        sample_rate: String,
-    ) -> Self {
-        Self {
+impl TextToSpeechService {
+    pub async fn from_adc(
+        voice_name: String,
+        language_code: String,
+        model_name: Option<String>,
+        audio_encoding: String,
+        sample_rate_hertz: i32,
+    ) -> Result<Self, TextToSpeechError> {
+        let client = TextToSpeech::builder()
+            .build()
+            .await
+            .map_err(|err| TextToSpeechError::Config(err.to_string()))?;
+        let (request_audio_encoding, output_format, wrap_pcm_as_wav) =
+            parse_audio_encoding(&audio_encoding)?;
+        Ok(Self {
             client,
-            voice_id,
-            engine,
+            voice_name,
+            language_code,
+            model_name,
+            request_audio_encoding,
             output_format,
-            sample_rate,
-        }
+            sample_rate_hertz,
+            wrap_pcm_as_wav,
+        })
     }
 
-    pub async fn synthesize_summary(&self, text: &str) -> Result<Vec<u8>, PollyTtsError> {
+    pub async fn synthesize_summary(&self, text: &str) -> Result<Vec<u8>, TextToSpeechError> {
         let text = text.trim();
         if text.is_empty() {
-            return Err(PollyTtsError::EmptyText);
+            return Err(TextToSpeechError::EmptyText);
         }
 
-        // Polly's per-request text limits are much lower than typical summary length.
-        // Chunk text conservatively and stitch audio reliably.
-        //
-        // Polly MP3 stitching via raw concatenation has proven fragile in browsers
-        // (codecs/metadata boundaries can cause early decode termination), so we
-        // stitch PCM and wrap it into a WAV container.
-        //
-        // `text` already contains injected SSML `<break .../>` tags, so we must
-        // chunk without splitting those tags (otherwise Polly rejects the request
-        // as `Invalid SSML request`).
-        let chunks = split_ssml_for_polly(text, 2500);
-        let mut pcm_audio = Vec::new();
-
-        let sample_rate_u32 = self.sample_rate.parse::<u32>().unwrap_or(8000);
-        let sample_rate_for_request = sample_rate_u32.to_string();
+        let chunks = split_ssml_for_tts(text, 2500);
+        let mut audio = Vec::new();
 
         for chunk in chunks {
-            // Polly requires SSML input to be wrapped in a `<speak>` root element.
-            // We send SSML per-chunk to keep text sizes bounded.
             let ssml = format!("<speak>{chunk}</speak>");
-            let request = self
+            let mut voice = VoiceSelectionParams::new()
+                .set_language_code(self.language_code.clone())
+                .set_name(self.voice_name.clone());
+            if let Some(model_name) = &self.model_name {
+                voice = voice.set_model_name(model_name.clone());
+            }
+            let response = self
                 .client
                 .synthesize_speech()
-                .text(ssml)
-                .voice_id(self.voice_id.as_str().into())
-                .engine(self.engine.as_str().into())
-                .text_type(PollyTextType::Ssml)
-                // Always request PCM for reliable concatenation.
-                .output_format(PollyOutputFormat::Pcm)
-                // Explicitly request the sample rate we will use for the WAV wrapper.
-                .sample_rate(sample_rate_for_request.as_str());
-
-            let response = request
+                .set_input(SynthesisInput::new().set_ssml(ssml))
+                .set_voice(voice)
+                .set_audio_config(
+                    AudioConfig::new()
+                        .set_audio_encoding(self.request_audio_encoding.clone())
+                        .set_sample_rate_hertz(self.sample_rate_hertz),
+                )
                 .send()
                 .await
-                .map_err(|err| PollyTtsError::Request(format!("{err:?}")))?;
+                .map_err(|err| TextToSpeechError::Request(format!("{err:?}")))?;
 
-            let stream = response.audio_stream;
-            let bytes = stream
-                .collect()
-                .await
-                .map_err(|err| PollyTtsError::Request(format!("{err:?}")))?
-                .into_bytes();
-
-            // PCM output is raw signed 16-bit little-endian mono.
-            pcm_audio.extend_from_slice(&bytes);
+            audio.extend_from_slice(&response.audio_content);
         }
 
-        Ok(wrap_pcm_s16le_mono_to_wav(pcm_audio, sample_rate_u32))
+        if self.wrap_pcm_as_wav {
+            Ok(wrap_pcm_s16le_mono_to_wav(
+                audio,
+                self.sample_rate_hertz as u32,
+            ))
+        } else {
+            Ok(audio)
+        }
     }
 
-    pub async fn resolve_voice_id_for_cache_key(&self) -> Result<String, PollyTtsError> {
-        Ok(self.voice_id.clone())
+    pub async fn resolve_voice_id_for_cache_key(&self) -> Result<String, TextToSpeechError> {
+        Ok(self.voice_name.clone())
     }
 
     pub fn model_id(&self) -> &str {
-        &self.engine
+        self.model_name.as_deref().unwrap_or("google-cloud-tts")
     }
 
     pub fn output_format(&self) -> &str {
@@ -447,48 +446,42 @@ impl PollyTtsService {
     }
 }
 
-/*
-fn polly_output_format_for_request(wants_wav_or_pcm: bool) -> PollyOutputFormat {
-    if wants_wav_or_pcm {
-        PollyOutputFormat::Pcm
-    } else {
-        PollyOutputFormat::Mp3
-    }
-}
-*/
-
-/*
-fn strip_leading_id3v2(bytes: &[u8]) -> &[u8] {
-    if bytes.len() < 10 || &bytes[0..3] != b"ID3" {
-        return bytes;
-    }
-
-    // ID3v2 size is stored as synchsafe integer in bytes 6..10.
-    let tag_size = ((bytes[6] as usize & 0x7f) << 21)
-        | ((bytes[7] as usize & 0x7f) << 14)
-        | ((bytes[8] as usize & 0x7f) << 7)
-        | (bytes[9] as usize & 0x7f);
-    let total_header = 10 + tag_size;
-
-    if total_header >= bytes.len() {
-        bytes
-    } else {
-        &bytes[total_header..]
+fn parse_audio_encoding(value: &str) -> Result<(AudioEncoding, String, bool), TextToSpeechError> {
+    match value.trim().to_ascii_uppercase().as_str() {
+        "LINEAR16" | "WAV" | "PCM" => Ok((AudioEncoding::Pcm, "wav".to_string(), true)),
+        "MP3" => Ok((AudioEncoding::Mp3, "mp3".to_string(), false)),
+        other => Err(TextToSpeechError::Config(format!(
+            "unsupported GOOGLE_TTS_AUDIO_ENCODING `{other}`; use LINEAR16, PCM, WAV, or MP3"
+        ))),
     }
 }
 
-fn strip_trailing_id3v1(bytes: &[u8]) -> &[u8] {
-    // ID3v1 tags are fixed-size 128-byte trailers that start with "TAG".
-    // When Polly returns one per chunk, non-final chunk trailers can make
-    // stitched streams appear truncated to some players.
-    if bytes.len() < 128 {
-        return bytes;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_audio_encoding_uses_pcm_for_wav_output() {
+        let (encoding, output_format, wrap) = parse_audio_encoding("LINEAR16").unwrap();
+        assert_eq!(encoding, AudioEncoding::Pcm);
+        assert_eq!(output_format, "wav");
+        assert!(wrap);
     }
-    let trailer_start = bytes.len() - 128;
-    if &bytes[trailer_start..trailer_start + 3] == b"TAG" {
-        &bytes[..trailer_start]
-    } else {
-        bytes
+
+    #[test]
+    fn split_ssml_preserves_tags() {
+        let chunks = split_ssml_for_tts(r#"Hello <break time="0.6s" /> world"#, 12);
+        assert!(
+            chunks
+                .iter()
+                .any(|chunk| chunk == r#"<break time="0.6s" />"#)
+        );
+    }
+
+    #[test]
+    fn wav_wrapper_adds_riff_header() {
+        let wav = wrap_pcm_s16le_mono_to_wav(vec![0, 0, 1, 0], 16_000);
+        assert!(wav.starts_with(b"RIFF"));
+        assert_eq!(&wav[8..12], b"WAVE");
     }
 }
-*/

@@ -330,7 +330,7 @@ pub async fn list_channels_with_virtual_others(store: &Store) -> Result<Vec<Chan
 }
 
 /// Compute the oldest `published_at` date across fully-ready videos in a
-/// channel, using an already-loaded slice — avoids an extra S3 round-trip
+/// channel, using an already-loaded slice — avoids an extra object-store round-trip
 /// when the caller has already fetched the video list.
 fn channel_sync_floor(channel: &Channel) -> Option<chrono::DateTime<chrono::Utc>> {
     if channel.earliest_sync_date_user_set {
@@ -377,7 +377,7 @@ fn oldest_ready_video_published_at_for_scope(
 /// Apply channel-scoped filtering, sorting, and pagination to a pre-loaded
 /// video slice.  The caller is responsible for loading the full video list
 /// (via `load_all_videos`) before calling this function so multiple callers
-/// can share a single S3 round-trip.
+/// can share a single object-store round-trip.
 async fn apply_channel_video_filters(
     store: &Store,
     all_videos: &[Video],
@@ -614,7 +614,7 @@ pub async fn reset_video_retry_count(store: &Store, video_id: &str) -> Result<()
 
 /// Repair stale `loading` rows and re-queue videos that hit `max_retries` (excluded from
 /// [`list_videos_for_queue_processing`]). Used once at worker startup after fixing async
-/// status races so existing S3 objects recover without manual edits.
+/// status races so existing object-store records recover without manual edits.
 pub(crate) fn apply_heal_queue_video_fields(video: &mut Video, max_retries: u8) -> bool {
     if video.transcript_status == ContentStatus::Ready
         && video.summary_status == ContentStatus::Ready

@@ -86,7 +86,7 @@ async fn test_app_state(db: crate::db::Store) -> AppState {
 }
 
 #[tokio::test]
-#[ignore] // requires live S3 backend
+#[ignore] // requires live object-store backend
 async fn workspace_bootstrap_includes_search_status_for_initial_render() {
     let store = Store::for_test().await;
     let channel = Channel {

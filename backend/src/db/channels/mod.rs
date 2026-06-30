@@ -205,7 +205,7 @@ pub async fn delete_channel(store: &Store, id: &str) -> Result<bool, StoreError>
         store
             .delete_prefix(&format!("search-sources/{}/", video_id))
             .await?;
-        super::search::delete_vectors_for_video(store, &video_id).await?;
+        super::search::delete_search_artifacts_for_video(store, &video_id).await?;
         store
             .delete_key(&format!("videos/{}.json", video_id))
             .await?;

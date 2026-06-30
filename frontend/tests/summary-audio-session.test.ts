@@ -73,7 +73,7 @@ describe("summary audio session", () => {
   it("keeps the unavailable audio state until a later successful debug sync", () => {
     resetSummaryAudioSessionsForTesting();
 
-    setSummaryAudioUnavailable("video-1", "Polly TTS is not configured");
+    setSummaryAudioUnavailable("video-1", "Text-to-Speech is not configured");
     expect(readSummaryAudioSession("video-1")).toMatchObject({
       status: "unavailable",
       audioRequested: true,

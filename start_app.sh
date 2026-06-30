@@ -38,9 +38,6 @@ else
 fi
 shared_backend_env_file="${shared_env_dir}/backend.env"
 shared_frontend_env_file="${shared_env_dir}/frontend.env"
-shared_aws_dir="${shared_env_dir}/aws"
-shared_aws_credentials_file="${shared_aws_dir}/credentials"
-shared_aws_config_file="${shared_aws_dir}/config"
 runtime_mode_file="${repo_root}/.github/runtime-mode.env"
 local_maintenance_preview_mode=0
 workflow_maintenance_mode=0
@@ -276,97 +273,51 @@ require_http_status() {
 	return 0
 }
 
-diagnose_aws_startup_access() {
-	echo "Checking AWS credentials configured for backend startup..."
+diagnose_gcp_startup_access() {
+	echo "Checking Google Cloud Storage configuration for backend startup..."
 
-	local inline_access_key
-	inline_access_key=$(resolve_env_value "AWS_ACCESS_KEY_ID" "backend/.env" "$shared_backend_env_file")
-	local inline_secret_key
-	inline_secret_key=$(resolve_env_value "AWS_SECRET_ACCESS_KEY" "backend/.env" "$shared_backend_env_file")
-	local inline_session_token
-	inline_session_token=$(resolve_env_value "AWS_SESSION_TOKEN" "backend/.env" "$shared_backend_env_file")
-	local explicit_credentials_file
-	explicit_credentials_file=$(resolve_env_value "AWS_SHARED_CREDENTIALS_FILE" "backend/.env" "$shared_backend_env_file")
-	local explicit_config_file
-	explicit_config_file=$(resolve_env_value "AWS_CONFIG_FILE" "backend/.env" "$shared_backend_env_file")
-	local aws_profile
-	aws_profile=$(resolve_env_value "AWS_PROFILE" "backend/.env" "$shared_backend_env_file")
-	if [[ -z "$aws_profile" ]]; then
-		aws_profile=$(resolve_env_value "AWS_DEFAULT_PROFILE" "backend/.env" "$shared_backend_env_file")
-	fi
-	if [[ -z "$aws_profile" ]]; then
-		aws_profile="default"
+	local provider
+	provider=$(resolve_env_value "OBJECT_STORE_PROVIDER" "backend/.env" "$shared_backend_env_file")
+	if [[ -z "$provider" ]]; then
+		provider="gcs"
 	fi
 
-	local credentials_file=""
-	if [[ -n "$explicit_credentials_file" ]]; then
-		credentials_file=${~explicit_credentials_file}
-	elif [[ -f "$shared_aws_credentials_file" ]]; then
-		credentials_file="$shared_aws_credentials_file"
-	elif [[ -n "${HOME:-}" && -f "${HOME}/.aws/credentials" ]]; then
-		credentials_file="${HOME}/.aws/credentials"
+	if [[ "$provider" == "memory" ]]; then
+		echo "Backend startup is using the explicit in-memory object store."
+		echo "This mode is intended for smoke tests only."
+		return 0
 	fi
 
-	local config_file=""
-	if [[ -n "$explicit_config_file" ]]; then
-		config_file=${~explicit_config_file}
-	elif [[ -f "$shared_aws_config_file" ]]; then
-		config_file="$shared_aws_config_file"
-	elif [[ -n "${HOME:-}" && -f "${HOME}/.aws/config" ]]; then
-		config_file="${HOME}/.aws/config"
+	local bucket
+	bucket=$(resolve_env_value "GCS_DATA_BUCKET" "backend/.env" "$shared_backend_env_file")
+	if [[ -z "$bucket" ]]; then
+		echo "GCS_DATA_BUCKET is missing. Set it in $shared_backend_env_file."
+	else
+		echo "GCS_DATA_BUCKET=$bucket"
 	fi
 
-	if [[ -n "$inline_access_key" || -n "$inline_secret_key" || -n "$inline_session_token" ]]; then
-		echo "Backend startup is using inline AWS credentials from env files."
-		if [[ -n "$inline_session_token" || "${inline_access_key:u}" == ASIA* ]]; then
-			echo "Hint: $shared_backend_env_file still pins temporary session credentials."
-			if command -v aws >/dev/null 2>&1; then
-				if [[ "$aws_profile" == "default" ]]; then
-					echo "Refresh them with: aws sso login"
-					echo "Then rerun: ./scripts/sync_aws_programmatic_credentials.sh"
-				else
-					echo "Refresh them with: aws sso login --profile $aws_profile"
-					echo "Then rerun: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
-				fi
-			fi
-			echo "For permanent local dev, remove AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN from $shared_backend_env_file"
-			echo "and define a long-lived aws_access_key_id/aws_secret_access_key pair in $shared_aws_credentials_file instead."
+	local adc_path
+	adc_path=$(resolve_env_value "GOOGLE_APPLICATION_CREDENTIALS" "backend/.env" "$shared_backend_env_file")
+	if [[ -n "$adc_path" ]]; then
+		adc_path=${~adc_path}
+		if [[ -f "$adc_path" ]]; then
+			echo "GOOGLE_APPLICATION_CREDENTIALS points to $adc_path"
 		else
-			echo "Inline credentials look like long-lived access keys, so the failure is not caused by missing AWS CLI login."
-			echo "Inspect backend.log for the underlying S3/bootstrap error."
+			echo "GOOGLE_APPLICATION_CREDENTIALS points to a missing file: $adc_path"
 		fi
-		return 0
-	fi
-
-	if [[ -n "$credentials_file" ]]; then
-		echo "Backend startup will use AWS credentials file: $credentials_file (profile: $aws_profile)"
-		if [[ -n "$config_file" ]]; then
-			echo "AWS config file: $config_file"
-		fi
-		echo "If that profile still resolves temporary or expired credentials, replace it with a static aws_access_key_id/aws_secret_access_key pair for permanent local dev."
-		return 0
-	fi
-
-	if command -v aws >/dev/null 2>&1; then
-		local export_summary
-		export_summary=$(AWS_PAGER="" aws configure export-credentials --format process 2>/dev/null | ruby -rjson -e 'j=JSON.parse(STDIN.read); ak=j["AccessKeyId"].to_s; puts "prefix=#{ak[0,4]}"; puts "session=#{j.key?("SessionToken") && !j["SessionToken"].to_s.empty? ? "yes" : "no"}"' 2>/dev/null || true)
-		if [[ -n "$export_summary" ]]; then
-			echo "AWS CLI currently resolves credentials for this shell, but local backend startup is not configured to use a permanent credentials file."
-			echo "$export_summary"
-			if [[ "$aws_profile" == "default" ]]; then
-				echo "If you need a temporary fallback, run: ./scripts/sync_aws_programmatic_credentials.sh"
-			else
-				echo "If you need a temporary fallback, run: ./scripts/sync_aws_programmatic_credentials.sh $aws_profile"
-			fi
+	else
+		echo "No GOOGLE_APPLICATION_CREDENTIALS file is set. Local startup uses Application Default Credentials."
+		if command -v gcloud >/dev/null 2>&1; then
+			echo "Run this if ADC is missing or expired: gcloud auth application-default login"
+		else
+			echo "Install gcloud or set GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON file for local access."
 		fi
 	fi
-
-	echo "Hint: configure permanent local AWS credentials in $shared_aws_credentials_file and keep only bucket/index settings in $shared_backend_env_file."
 }
 
-aws_startup_access_issue_detected() {
+gcp_startup_access_issue_detected() {
 	if grep -Eiq \
-		"unable to locate credentials|failed to refresh cached Login token|session has expired|token has expired|expiredtoken|refresh token has expired|AccessDeniedException" \
+		"Application Default Credentials|GOOGLE_APPLICATION_CREDENTIALS|GCS|Google Cloud|object store|PermissionDenied|Unauthenticated|credential|access denied|403|401" \
 		backend.log 2>/dev/null; then
 		return 0
 	fi
@@ -733,8 +684,8 @@ if (( local_maintenance_preview_mode == 0 )); then
 
 	if ! wait_for_http "Backend" "http://localhost:$backend_port/api/health" "$backend_pid"; then
 		echo "Backend failed to start. Last backend log lines:"
-		if aws_startup_access_issue_detected; then
-			diagnose_aws_startup_access
+		if gcp_startup_access_issue_detected; then
+			diagnose_gcp_startup_access
 		fi
 		tail -n 80 backend.log || true
 		exit 1
@@ -769,9 +720,9 @@ if (( local_maintenance_preview_mode == 0 && workflow_maintenance_mode == 0 )); 
 		"http://localhost:$backend_port/api/workspace/bootstrap?limit=20" \
 		"200"; then
 		echo "Backend is up, but the workspace bootstrap request failed."
-		if aws_startup_access_issue_detected; then
-			diagnose_aws_startup_access
-			echo "Startup failed because backend AWS access is unavailable."
+		if gcp_startup_access_issue_detected; then
+			diagnose_gcp_startup_access
+			echo "Startup failed because backend Google Cloud Storage access is unavailable."
 			echo "Last backend log lines:"
 			tail -n 80 backend.log || true
 			exit 1

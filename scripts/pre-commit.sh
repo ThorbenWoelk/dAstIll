@@ -92,14 +92,13 @@ if [[ -n "$BACKEND_STAGED" ]] && git diff --cached --name-only | grep -qE 'backe
     export OLLAMA_SUMMARY_MODEL="test"
     export SUMMARY_EVALUATOR_MODEL="test"
     export BACKEND_CORS_ALLOWED_ORIGINS="http://localhost:3000"
-    export S3_DATA_BUCKET="test"
-    export S3_VECTOR_BUCKET="test"
-    export AWS_REGION="us-east-1"
-    export AWS_ACCESS_KEY_ID="test"
-    export AWS_SECRET_ACCESS_KEY="test"
+    export OBJECT_STORE_PROVIDER="memory"
+    export ALLOW_IN_MEMORY_OBJECT_STORE="true"
+    export SEARCH_SEMANTIC_ENABLED="false"
     
     # Run with timeout - must exceed the libSQL builder inner timeout (30s) so the binary
     # can fail cleanly with exit 1 rather than being killed with exit 124.
+    exit_code=0
     timeout 45s ./backend/target/release/dastill 2>&1 || exit_code=$?
 
     # Exit codes:
