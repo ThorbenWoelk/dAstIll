@@ -93,10 +93,7 @@ pub(crate) async fn require_channel_for_access(
         return Err((StatusCode::NOT_FOUND, "Channel not found".to_string()));
     }
 
-    db::get_channel(&state.db, channel_id)
-        .await
-        .map_err(map_db_err)?
-        .ok_or((StatusCode::NOT_FOUND, "Channel not found".to_string()))
+    require_channel(state, channel_id).await
 }
 
 pub(crate) async fn require_video_for_access(

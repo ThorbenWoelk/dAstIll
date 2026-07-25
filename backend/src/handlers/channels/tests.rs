@@ -192,13 +192,16 @@ async fn refresh_channel_videos_rejects_channels_outside_access_scope() {
     let channel = insert_private_channel(&store).await;
     let state = test_app_state(store).await;
 
-    let error = refresh_channel_videos(
+    let error = match refresh_channel_videos(
         State(state),
         Extension(unscoped_access_context()),
         Path(channel.id),
     )
     .await
-    .expect_err("refresh must reject unscoped channel access");
+    {
+        Ok(_) => panic!("refresh must reject unscoped channel access"),
+        Err(error) => error,
+    };
 
     assert_eq!(error.0, StatusCode::NOT_FOUND);
     assert_eq!(error.1, "Channel not found");
@@ -210,7 +213,7 @@ async fn backfill_channel_videos_rejects_channels_outside_access_scope() {
     let channel = insert_private_channel(&store).await;
     let state = test_app_state(store).await;
 
-    let error = backfill_channel_videos(
+    let error = match backfill_channel_videos(
         State(state),
         Extension(unscoped_access_context()),
         Path(channel.id),
@@ -220,7 +223,10 @@ async fn backfill_channel_videos_rejects_channels_outside_access_scope() {
         }),
     )
     .await
-    .expect_err("backfill must reject unscoped channel access");
+    {
+        Ok(_) => panic!("backfill must reject unscoped channel access"),
+        Err(error) => error,
+    };
 
     assert_eq!(error.0, StatusCode::NOT_FOUND);
     assert_eq!(error.1, "Channel not found");
