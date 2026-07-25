@@ -24,7 +24,7 @@ use crate::services::{
 };
 use crate::state::AppState;
 
-use super::{map_db_err, require_channel, require_channel_for_access};
+use super::{map_db_err, require_channel_for_access};
 
 #[derive(Deserialize, IntoParams)]
 pub struct BackfillParams {
@@ -796,9 +796,12 @@ const REFRESH_BACKFILL_MAX_ROUNDS: usize = 20;
 )]
 pub async fn refresh_channel_videos(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(channel_id = %id, "refresh requested - queueing latest videos");
+
+    let channel = require_channel_for_access(&state, &access_context, &id).await?;
 
     if let Some(profile) = db::get_source_profile(&state.db, &id)
         .await
@@ -813,7 +816,7 @@ pub async fn refresh_channel_videos(
         }
     }
 
-    let earliest_sync_date = require_channel(&state, &id).await?.earliest_sync_date;
+    let earliest_sync_date = channel.earliest_sync_date;
 
     let videos = state.youtube.fetch_videos(&id).await.map_err(map_db_err)?;
 
@@ -891,10 +894,13 @@ pub async fn refresh_channel_videos(
 )]
 pub async fn backfill_channel_videos(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
     Query(params): Query<BackfillParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(channel_id = %id, "backfill requested");
+
+    require_channel_for_access(&state, &access_context, &id).await?;
 
     if let Some(profile) = db::get_source_profile(&state.db, &id)
         .await
@@ -910,8 +916,6 @@ pub async fn backfill_channel_videos(
     }
 
     let batch_limit = params.limit.unwrap_or(15).clamp(1, 100);
-
-    require_channel(&state, &id).await?;
     let known_video_ids = {
         db::list_video_ids_by_channel(&state.db, &id)
             .await
