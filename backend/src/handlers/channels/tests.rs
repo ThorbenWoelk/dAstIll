@@ -3,7 +3,8 @@ use std::sync::Arc;
 use axum::{
     Extension,
     body::to_bytes,
-    extract::{Query, State},
+    extract::{Path, Query, State},
+    http::StatusCode,
     response::IntoResponse,
 };
 use chrono::Utc;
@@ -11,7 +12,9 @@ use reqwest::Client;
 use serde_json::Value;
 use tokio::sync::RwLock;
 
-use super::workspace_bootstrap;
+use super::{
+    BackfillParams, backfill_channel_videos, refresh_channel_videos, workspace_bootstrap,
+};
 use crate::{
     db::{Store, insert_channel, insert_video, list_search_progress_materials, upsert_transcript},
     handlers::query::WorkspaceBootstrapParams,
@@ -157,4 +160,68 @@ async fn workspace_bootstrap_includes_search_status_for_initial_render() {
     assert_eq!(payload["channels"].as_array().unwrap().len(), 1);
     assert_eq!(payload["search_status"]["total_sources"].as_u64(), Some(1));
     assert_eq!(payload["search_status"]["ready"].as_u64(), Some(0));
+}
+
+fn unscoped_access_context() -> AccessContext {
+    AccessContext {
+        user_id: Some("user-unscoped".to_string()),
+        auth_state: AuthState::Authenticated,
+        access_role: AccessRole::User,
+        allowed_channel_ids: Vec::new(),
+        allowed_other_video_ids: Vec::new(),
+    }
+}
+
+async fn insert_private_channel(store: &Store) -> Channel {
+    let channel = Channel {
+        id: "UC_PRIVATE_SCOPE".to_string(),
+        handle: None,
+        name: "Private Scope Channel".to_string(),
+        thumbnail_url: None,
+        added_at: Utc::now(),
+        earliest_sync_date: None,
+        earliest_sync_date_user_set: false,
+    };
+    insert_channel(store, &channel).await.unwrap();
+    channel
+}
+
+#[tokio::test]
+async fn refresh_channel_videos_rejects_channels_outside_access_scope() {
+    let store = Store::for_test().await;
+    let channel = insert_private_channel(&store).await;
+    let state = test_app_state(store).await;
+
+    let error = refresh_channel_videos(
+        State(state),
+        Extension(unscoped_access_context()),
+        Path(channel.id),
+    )
+    .await
+    .expect_err("refresh must reject unscoped channel access");
+
+    assert_eq!(error.0, StatusCode::NOT_FOUND);
+    assert_eq!(error.1, "Channel not found");
+}
+
+#[tokio::test]
+async fn backfill_channel_videos_rejects_channels_outside_access_scope() {
+    let store = Store::for_test().await;
+    let channel = insert_private_channel(&store).await;
+    let state = test_app_state(store).await;
+
+    let error = backfill_channel_videos(
+        State(state),
+        Extension(unscoped_access_context()),
+        Path(channel.id),
+        Query(BackfillParams {
+            limit: Some(10),
+            until: None,
+        }),
+    )
+    .await
+    .expect_err("backfill must reject unscoped channel access");
+
+    assert_eq!(error.0, StatusCode::NOT_FOUND);
+    assert_eq!(error.1, "Channel not found");
 }
