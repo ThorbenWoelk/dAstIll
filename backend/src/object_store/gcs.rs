@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use google_cloud_gax::error::rpc::Code;
 use google_cloud_storage::client::{Storage, StorageControl};
 
 use super::{ObjectStore, ObjectStoreError};
@@ -29,6 +30,9 @@ impl GcsObjectStore {
 
     fn is_not_found(err: &google_cloud_storage::Error) -> bool {
         err.http_status_code() == Some(404)
+            || err
+                .status()
+                .is_some_and(|status| status.code == Code::NotFound)
     }
 }
 
@@ -135,5 +139,29 @@ impl ObjectStore for GcsObjectStore {
                 "GCS metadata read failed for {key}: {err}"
             ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use google_cloud_gax::error::rpc::Status;
+
+    use super::*;
+
+    #[test]
+    fn recognizes_rpc_not_found() {
+        let error =
+            google_cloud_storage::Error::service(Status::default().set_code(Code::NotFound));
+
+        assert!(GcsObjectStore::is_not_found(&error));
+    }
+
+    #[test]
+    fn rejects_other_rpc_errors_as_not_found() {
+        let error = google_cloud_storage::Error::service(
+            Status::default().set_code(Code::PermissionDenied),
+        );
+
+        assert!(!GcsObjectStore::is_not_found(&error));
     }
 }
