@@ -20,7 +20,7 @@ serde_json = "1"
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 
 # RSS parsing
-rss = "2"
+rss = "2.1"
 roxmltree = "0.20"
 
 # HTML parsing for channel resolution

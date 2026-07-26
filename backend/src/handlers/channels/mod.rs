@@ -99,6 +99,59 @@ async fn delete_channel_with_search_cleanup(
         .map_err(|err| err.to_string())
 }
 
+/// Persist a source profile and run its initial sync.
+///
+/// On sync failure, only delete the canonical channel when it did not already exist.
+/// Shared catalog channels (seeded podcasts, another user's prior subscribe) must not be
+/// wiped by a later caller's failed sync rollback.
+async fn persist_and_sync_source_profile(
+    state: &AppState,
+    profile: &SourceProfileRecord,
+) -> Result<Channel, (StatusCode, String)> {
+    let channel_id = profile.source.id.as_str();
+    let channel_existed = db::get_channel(&state.db, channel_id)
+        .await
+        .map_err(map_db_err)?
+        .is_some();
+
+    let channel = persist_source_profile_and_channel(&state.db, profile)
+        .await
+        .map_err(map_db_err)?;
+
+    if let Err(err) = sync_source_profile(state, profile).await {
+        let has_canonical_videos = db::list_video_ids_by_channel(&state.db, &channel.id)
+            .await
+            .map(|ids| !ids.is_empty())
+            .unwrap_or(true);
+        if should_rollback_channel_after_sync_failure(channel_existed, has_canonical_videos) {
+            let _ = delete_channel_with_search_cleanup(state, &channel.id).await;
+        } else {
+            tracing::warn!(
+                channel_id = %channel.id,
+                channel_existed_before_persist = channel_existed,
+                has_canonical_videos,
+                error = %err,
+                "source sync failed - leaving canonical catalog data intact"
+            );
+        }
+        return Err((StatusCode::BAD_GATEWAY, err));
+    }
+
+    Ok(channel)
+}
+
+/// Roll back a failed first-time subscribe only when this call created an empty
+/// channel. Skip rollback when:
+/// - the channel already existed (shared/seeded catalog), or
+/// - videos are already present (a concurrent first-time subscribe may have
+///   finished syncing while this call failed).
+fn should_rollback_channel_after_sync_failure(
+    channel_existed_before_persist: bool,
+    has_canonical_videos: bool,
+) -> bool {
+    !channel_existed_before_persist && !has_canonical_videos
+}
+
 async fn source_profile_for_channel(
     store: &db::Store,
     channel: &Channel,
@@ -444,13 +497,7 @@ pub async fn add_channel(
                 container: resolved.container,
                 openalex_query: Some(structured_query),
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
+            let channel = persist_and_sync_source_profile(&state, &profile).await?;
             db::save_user_channel(
                 &state.db,
                 user_id,
@@ -485,13 +532,7 @@ pub async fn add_channel(
                     }
                 }
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
+            let channel = persist_and_sync_source_profile(&state, &profile).await?;
             db::save_user_channel(
                 &state.db,
                 user_id,
@@ -517,13 +558,7 @@ pub async fn add_channel(
                 container: material.container,
                 openalex_query: None,
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
+            let channel = persist_and_sync_source_profile(&state, &profile).await?;
             db::save_user_channel(
                 &state.db,
                 user_id,

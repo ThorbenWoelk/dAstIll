@@ -11,11 +11,21 @@ use reqwest::Client;
 use serde_json::Value;
 use tokio::sync::RwLock;
 
-use super::workspace_bootstrap;
+use super::{
+    persist_and_sync_source_profile, should_rollback_channel_after_sync_failure,
+    workspace_bootstrap,
+};
 use crate::{
-    db::{Store, insert_channel, insert_video, list_search_progress_materials, upsert_transcript},
+    db::{
+        SourceProfileRecord, Store, get_channel, get_transcript, get_video, insert_channel,
+        insert_video, list_search_progress_materials, upsert_transcript,
+    },
     handlers::query::WorkspaceBootstrapParams,
-    models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
+    models::{
+        Channel, ContentSource, ContentSourceKind, ContentStatus, ProviderIdentity, ProviderKind,
+        SourceBackingKind, SubscriptionContainer, SubscriptionContainerKind, Transcript,
+        TranscriptRenderMode, Video,
+    },
     search::{SearchProgress, SearchService},
     security::{AccessContext, AccessRole, AuthState},
     services::{
@@ -157,4 +167,165 @@ async fn workspace_bootstrap_includes_search_status_for_initial_render() {
     assert_eq!(payload["channels"].as_array().unwrap().len(), 1);
     assert_eq!(payload["search_status"]["total_sources"].as_u64(), Some(1));
     assert_eq!(payload["search_status"]["ready"].as_u64(), Some(0));
+}
+
+#[test]
+fn failed_sync_rollback_only_targets_empty_newly_created_channels() {
+    assert!(should_rollback_channel_after_sync_failure(false, false));
+    assert!(!should_rollback_channel_after_sync_failure(true, false));
+    assert!(!should_rollback_channel_after_sync_failure(false, true));
+    assert!(!should_rollback_channel_after_sync_failure(true, true));
+}
+
+#[tokio::test]
+async fn failed_sync_rolls_back_empty_newly_created_channel() {
+    let store = Store::for_test().await;
+    let channel_id = "website:new-empty-rollback".to_string();
+    let state = test_app_state(store.clone()).await;
+    let profile = SourceProfileRecord {
+        source: ContentSource {
+            id: channel_id.clone(),
+            provider: ProviderKind::Website,
+            source_kind: ContentSourceKind::Website,
+            container_id: "websites".to_string(),
+            container_kind: SubscriptionContainerKind::StandaloneTrackedSource,
+            backing_kind: SourceBackingKind::Manual,
+            title: "New Empty Site".to_string(),
+            subtitle: Some("https://127.0.0.1:9/missing-page".to_string()),
+            handle: Some("https://127.0.0.1:9/missing-page".to_string()),
+            thumbnail_url: None,
+            requires_auth: false,
+            public_content_available: true,
+            entitled_content_available: true,
+            external_ids: vec![ProviderIdentity {
+                provider: ProviderKind::Website,
+                external_id: channel_id.clone(),
+            }],
+        },
+        container: SubscriptionContainer {
+            id: "websites".to_string(),
+            kind: SubscriptionContainerKind::StandaloneTrackedSource,
+            title: "Websites".to_string(),
+            provider: ProviderKind::Website,
+            backing_kind: SourceBackingKind::Manual,
+            user_editable: true,
+            source_ids: vec![channel_id.clone()],
+        },
+        openalex_query: None,
+    };
+
+    let err = persist_and_sync_source_profile(&state, &profile)
+        .await
+        .expect_err("sync against unreachable page should fail");
+    assert_eq!(err.0, axum::http::StatusCode::BAD_GATEWAY);
+    assert!(
+        get_channel(&store, &channel_id).await.unwrap().is_none(),
+        "empty newly created channel should be rolled back after sync failure"
+    );
+}
+
+#[tokio::test]
+async fn failed_sync_does_not_wipe_existing_shared_channel_content() {
+    let store = Store::for_test().await;
+    let channel_id = "website:shared-existing".to_string();
+    let video_id = "website:page:shared-existing".to_string();
+    let channel = Channel {
+        id: channel_id.clone(),
+        handle: Some("https://example.com/existing".to_string()),
+        name: "Existing Shared Site".to_string(),
+        thumbnail_url: None,
+        added_at: Utc::now(),
+        earliest_sync_date: None,
+        earliest_sync_date_user_set: false,
+    };
+    insert_channel(&store, &channel).await.unwrap();
+    insert_video(
+        &store,
+        &Video {
+            id: video_id.clone(),
+            channel_id: channel_id.clone(),
+            title: "Existing page".to_string(),
+            thumbnail_url: None,
+            published_at: Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Pending,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: None,
+        },
+    )
+    .await
+    .unwrap();
+    upsert_transcript(
+        &store,
+        &Transcript {
+            video_id: video_id.clone(),
+            raw_text: Some("keep this shared transcript".to_string()),
+            formatted_markdown: None,
+            render_mode: TranscriptRenderMode::PlainText,
+            timed_text: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let state = test_app_state(store.clone()).await;
+    let profile = SourceProfileRecord {
+        source: ContentSource {
+            id: channel_id.clone(),
+            provider: ProviderKind::Website,
+            source_kind: ContentSourceKind::Website,
+            container_id: "websites".to_string(),
+            container_kind: SubscriptionContainerKind::StandaloneTrackedSource,
+            backing_kind: SourceBackingKind::Manual,
+            title: "Existing Shared Site".to_string(),
+            // Force sync_source_profile to fail after persist.
+            subtitle: Some("https://127.0.0.1:9/missing-page".to_string()),
+            handle: Some("https://127.0.0.1:9/missing-page".to_string()),
+            thumbnail_url: None,
+            requires_auth: false,
+            public_content_available: true,
+            entitled_content_available: true,
+            external_ids: vec![ProviderIdentity {
+                provider: ProviderKind::Website,
+                external_id: channel_id.clone(),
+            }],
+        },
+        container: SubscriptionContainer {
+            id: "websites".to_string(),
+            kind: SubscriptionContainerKind::StandaloneTrackedSource,
+            title: "Websites".to_string(),
+            provider: ProviderKind::Website,
+            backing_kind: SourceBackingKind::Manual,
+            user_editable: true,
+            source_ids: vec![channel_id.clone()],
+        },
+        openalex_query: None,
+    };
+
+    let err = persist_and_sync_source_profile(&state, &profile)
+        .await
+        .expect_err("sync against unreachable page should fail");
+    assert_eq!(err.0, axum::http::StatusCode::BAD_GATEWAY);
+
+    assert!(
+        get_channel(&store, &channel_id)
+            .await
+            .unwrap()
+            .is_some(),
+        "existing shared channel must survive failed subscribe sync rollback"
+    );
+    assert!(
+        get_video(&store, &video_id, false)
+            .await
+            .unwrap()
+            .is_some(),
+        "existing shared videos must survive failed subscribe sync rollback"
+    );
+    let transcript = get_transcript(&store, &video_id).await.unwrap().unwrap();
+    assert_eq!(
+        transcript.raw_text.as_deref(),
+        Some("keep this shared transcript")
+    );
 }
