@@ -347,10 +347,8 @@ pub struct TextToSpeechService {
     voice_name: String,
     language_code: String,
     model_name: Option<String>,
-    request_audio_encoding: AudioEncoding,
     output_format: String,
     sample_rate_hertz: i32,
-    wrap_pcm_as_wav: bool,
 }
 
 #[derive(Debug, Error)]
@@ -375,17 +373,14 @@ impl TextToSpeechService {
             .build()
             .await
             .map_err(|err| TextToSpeechError::Config(err.to_string()))?;
-        let (request_audio_encoding, output_format, wrap_pcm_as_wav) =
-            parse_audio_encoding(&audio_encoding)?;
+        let output_format = parse_audio_encoding(&audio_encoding)?;
         Ok(Self {
             client,
             voice_name,
             language_code,
             model_name,
-            request_audio_encoding,
             output_format,
             sample_rate_hertz,
-            wrap_pcm_as_wav,
         })
     }
 
@@ -395,8 +390,17 @@ impl TextToSpeechService {
             return Err(TextToSpeechError::EmptyText);
         }
 
+        // Cloud TTS per-request SSML limits are lower than typical summary length.
+        // Chunk text conservatively and stitch audio reliably.
+        //
+        // Multi-chunk MP3 stitching via raw concatenation is fragile in browsers
+        // (codec/metadata boundaries can cause early decode termination), so we
+        // always request headerless PCM and wrap the concatenated stream as WAV.
+        //
+        // `text` already contains injected SSML `<break .../>` tags, so we must
+        // chunk without splitting those tags.
         let chunks = split_ssml_for_tts(text, 2500);
-        let mut audio = Vec::new();
+        let mut pcm_audio = Vec::new();
 
         for chunk in chunks {
             let ssml = format!("<speak>{chunk}</speak>");
@@ -413,24 +417,21 @@ impl TextToSpeechService {
                 .set_voice(voice)
                 .set_audio_config(
                     AudioConfig::new()
-                        .set_audio_encoding(self.request_audio_encoding.clone())
+                        // Always request headerless PCM for reliable concatenation.
+                        .set_audio_encoding(AudioEncoding::Pcm)
                         .set_sample_rate_hertz(self.sample_rate_hertz),
                 )
                 .send()
                 .await
                 .map_err(|err| TextToSpeechError::Request(format!("{err:?}")))?;
 
-            audio.extend_from_slice(&response.audio_content);
+            pcm_audio.extend_from_slice(&response.audio_content);
         }
 
-        if self.wrap_pcm_as_wav {
-            Ok(wrap_pcm_s16le_mono_to_wav(
-                audio,
-                self.sample_rate_hertz as u32,
-            ))
-        } else {
-            Ok(audio)
-        }
+        Ok(wrap_pcm_s16le_mono_to_wav(
+            pcm_audio,
+            self.sample_rate_hertz as u32,
+        ))
     }
 
     pub async fn resolve_voice_id_for_cache_key(&self) -> Result<String, TextToSpeechError> {
@@ -446,12 +447,15 @@ impl TextToSpeechService {
     }
 }
 
-fn parse_audio_encoding(value: &str) -> Result<(AudioEncoding, String, bool), TextToSpeechError> {
+fn parse_audio_encoding(value: &str) -> Result<String, TextToSpeechError> {
     match value.trim().to_ascii_uppercase().as_str() {
-        "LINEAR16" | "WAV" | "PCM" => Ok((AudioEncoding::Pcm, "wav".to_string(), true)),
-        "MP3" => Ok((AudioEncoding::Mp3, "mp3".to_string(), false)),
+        // Synthesis always requests headerless PCM and wraps the stitched result as WAV.
+        "LINEAR16" | "WAV" | "PCM" => Ok("wav".to_string()),
+        "MP3" => Err(TextToSpeechError::Config(
+            "GOOGLE_TTS_AUDIO_ENCODING=MP3 is unsupported because multi-chunk MP3 byte concatenation corrupts browser playback; use LINEAR16, PCM, or WAV".to_string(),
+        )),
         other => Err(TextToSpeechError::Config(format!(
-            "unsupported GOOGLE_TTS_AUDIO_ENCODING `{other}`; use LINEAR16, PCM, WAV, or MP3"
+            "unsupported GOOGLE_TTS_AUDIO_ENCODING `{other}`; use LINEAR16, PCM, or WAV"
         ))),
     }
 }
@@ -461,11 +465,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_audio_encoding_uses_pcm_for_wav_output() {
-        let (encoding, output_format, wrap) = parse_audio_encoding("LINEAR16").unwrap();
-        assert_eq!(encoding, AudioEncoding::Pcm);
-        assert_eq!(output_format, "wav");
-        assert!(wrap);
+    fn parse_audio_encoding_uses_wav_output_for_linear16() {
+        assert_eq!(parse_audio_encoding("LINEAR16").unwrap(), "wav");
+    }
+
+    #[test]
+    fn parse_audio_encoding_rejects_mp3_stitch_path() {
+        let error = parse_audio_encoding("MP3").unwrap_err().to_string();
+        assert!(
+            error.contains("MP3 is unsupported"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
