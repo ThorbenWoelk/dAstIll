@@ -4,6 +4,7 @@ import { onMount } from "svelte";
 import type { Component } from "svelte";
 
 import { authState } from "$lib/auth/state.svelte";
+import { getAuthStorageScopeKey } from "$lib/auth/storage";
 import {
   loadWorkspaceState,
   restoreWorkspaceSnapshot,
@@ -32,6 +33,10 @@ import type {
   VideoTypeFilter,
 } from "$lib/types";
 import type { VocabularyReplacement } from "$lib/bindings/VocabularyReplacement";
+import {
+  canPersistServerPreferences,
+  hydrateAuthenticatedPreferences,
+} from "$lib/workspace/home-workspace-preferences";
 
 import { createContentState } from "$lib/workspace/content-state.svelte";
 import { createSidebarState } from "$lib/workspace/sidebar-state.svelte";
@@ -73,8 +78,81 @@ export function createHomeWorkspacePersistenceController(options: {
   let shallowUrlSyncReady = $state(false);
   let viewUrlHydrated = $state(false);
   let preferencesHydrated = $state(false);
+  let preferencesScopeKey = $state<string | null>(null);
+  let preferencesLoadSeq = 0;
+  let preferencesInFlightScopeKey: string | null = null;
+  let preferencesFailedScopeKey: string | null = null;
   let WorkspaceSearchBarComponent = $state<Component | null>(null);
   let preferencesSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearServerPreferencesHydration() {
+    preferencesHydrated = false;
+    preferencesScopeKey = null;
+    preferencesInFlightScopeKey = null;
+    if (preferencesSaveTimer) {
+      clearTimeout(preferencesSaveTimer);
+      preferencesSaveTimer = null;
+    }
+  }
+
+  function applyLoadedPreferences(preferences: {
+    channel_order: string[];
+    channel_sort_mode: ChannelSortMode | string;
+    vocabulary_replacements?: VocabularyReplacement[];
+  }) {
+    sidebarState.applyChannelPreferencesState({
+      channelOrder: preferences.channel_order,
+      channelSortMode: preferences.channel_sort_mode as ChannelSortMode,
+    });
+    options.setVocabularyReplacements(
+      preferences.vocabulary_replacements ?? [],
+    );
+  }
+
+  async function loadServerPreferencesForCurrentAuth(scopeKey: string) {
+    if (
+      preferencesInFlightScopeKey === scopeKey ||
+      preferencesFailedScopeKey === scopeKey
+    ) {
+      return;
+    }
+
+    const seq = ++preferencesLoadSeq;
+    preferencesInFlightScopeKey = scopeKey;
+    const outcome = await hydrateAuthenticatedPreferences({
+      authReady: authState.ready,
+      auth: authState.current,
+      getPreferences,
+    });
+
+    if (seq !== preferencesLoadSeq) {
+      return;
+    }
+
+    if (outcome.status === "skipped") {
+      clearServerPreferencesHydration();
+      return;
+    }
+
+    if (outcome.status === "failed") {
+      // Keep saves disabled so a failed GET cannot be followed by a PUT of
+      // empty in-memory defaults that wipe vocabulary on the server.
+      preferencesFailedScopeKey = scopeKey;
+      clearServerPreferencesHydration();
+      return;
+    }
+
+    if (getAuthStorageScopeKey(authState.current) !== outcome.scopeKey) {
+      preferencesInFlightScopeKey = null;
+      return;
+    }
+
+    applyLoadedPreferences(outcome.preferences);
+    preferencesFailedScopeKey = null;
+    preferencesInFlightScopeKey = null;
+    preferencesScopeKey = outcome.scopeKey;
+    preferencesHydrated = true;
+  }
 
   function restoreWorkspaceState() {
     const urlState: Partial<WorkspaceViewState> = {};
@@ -203,11 +281,24 @@ export function createHomeWorkspacePersistenceController(options: {
       snapshot,
       options.getWorkspaceStorageKey(),
     );
-    if (!preferencesHydrated) return;
-    if (authState.current.authState !== "authenticated") return;
+    if (
+      !canPersistServerPreferences({
+        preferencesHydrated,
+        preferencesScopeKey,
+        auth: authState.current,
+      })
+    ) {
+      return;
+    }
     if (preferencesSaveTimer) clearTimeout(preferencesSaveTimer);
     preferencesSaveTimer = setTimeout(() => {
-      if (authState.current.authState !== "authenticated") {
+      if (
+        !canPersistServerPreferences({
+          preferencesHydrated,
+          preferencesScopeKey,
+          auth: authState.current,
+        })
+      ) {
         preferencesSaveTimer = null;
         return;
       }
@@ -229,6 +320,28 @@ export function createHomeWorkspacePersistenceController(options: {
 
   $effect(() => {
     persistViewUrl();
+  });
+
+  $effect(() => {
+    const ready = authState.ready;
+    const auth = authState.current;
+    const scopeKey = getAuthStorageScopeKey(auth);
+
+    if (!ready) {
+      return;
+    }
+
+    if (auth.authState !== "authenticated") {
+      preferencesFailedScopeKey = null;
+      clearServerPreferencesHydration();
+      return;
+    }
+
+    if (preferencesHydrated && preferencesScopeKey === scopeKey) {
+      return;
+    }
+
+    void loadServerPreferencesForCurrentAuth(scopeKey);
   });
 
   onMount(() => {
@@ -266,32 +379,18 @@ export function createHomeWorkspacePersistenceController(options: {
           sidebarState.acknowledgedFilter,
         );
 
-        const [bootstrapResult, apiPreferences] = await Promise.all([
-          resolveBootstrapOnMount({
-            serverBootstrap: page.data.bootstrap ?? null,
-            selectedChannelId: selectedChannelIdAtMount,
-            workspaceCacheScopeKey: options.getWorkspaceCacheScopeKey(),
-            viewSnapshotCacheKey: sidebarState.selectedChannelId
-              ? options.buildWorkspaceSnapshotCacheKey(
-                  sidebarState.selectedChannelId,
-                  sidebarState.videoTypeFilter,
-                  acknowledgedAtMount,
-                )
-              : null,
-          }),
-          getPreferences().catch(() => null),
-        ]);
-
-        if (apiPreferences && authState.current.authState === "authenticated") {
-          sidebarState.applyChannelPreferencesState({
-            channelOrder: apiPreferences.channel_order,
-            channelSortMode:
-              apiPreferences.channel_sort_mode as ChannelSortMode,
-          });
-          options.setVocabularyReplacements(
-            apiPreferences.vocabulary_replacements ?? [],
-          );
-        }
+        const bootstrapResult = await resolveBootstrapOnMount({
+          serverBootstrap: page.data.bootstrap ?? null,
+          selectedChannelId: selectedChannelIdAtMount,
+          workspaceCacheScopeKey: options.getWorkspaceCacheScopeKey(),
+          viewSnapshotCacheKey: sidebarState.selectedChannelId
+            ? options.buildWorkspaceSnapshotCacheKey(
+                sidebarState.selectedChannelId,
+                sidebarState.videoTypeFilter,
+                acknowledgedAtMount,
+              )
+            : null,
+        });
 
         const hasInitialData = Boolean(
           bootstrapResult.channels && bootstrapResult.channels.length > 0,
@@ -332,8 +431,8 @@ export function createHomeWorkspacePersistenceController(options: {
           .finally(() => {
             viewUrlHydrated = true;
           });
-      } finally {
-        preferencesHydrated = true;
+      } catch {
+        // Bootstrap hydration retries with the normal page error handling.
       }
     })();
 
