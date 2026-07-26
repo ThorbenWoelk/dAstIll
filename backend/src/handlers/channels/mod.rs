@@ -99,6 +99,45 @@ async fn delete_channel_with_search_cleanup(
         .map_err(|err| err.to_string())
 }
 
+/// Persist a source profile and run its initial sync.
+///
+/// On sync failure, only delete the canonical channel when it did not already exist.
+/// Shared catalog channels (seeded podcasts, another user's prior subscribe) must not be
+/// wiped by a later caller's failed sync rollback.
+async fn persist_and_sync_source_profile(
+    state: &AppState,
+    profile: &SourceProfileRecord,
+) -> Result<Channel, (StatusCode, String)> {
+    let channel_id = profile.source.id.as_str();
+    let channel_existed = db::get_channel(&state.db, channel_id)
+        .await
+        .map_err(map_db_err)?
+        .is_some();
+
+    let channel = persist_source_profile_and_channel(&state.db, profile)
+        .await
+        .map_err(map_db_err)?;
+
+    if let Err(err) = sync_source_profile(state, profile).await {
+        if should_rollback_channel_after_sync_failure(channel_existed) {
+            let _ = delete_channel_with_search_cleanup(state, &channel.id).await;
+        } else {
+            tracing::warn!(
+                channel_id = %channel.id,
+                error = %err,
+                "source sync failed for existing shared channel - leaving canonical data intact"
+            );
+        }
+        return Err((StatusCode::BAD_GATEWAY, err));
+    }
+
+    Ok(channel)
+}
+
+fn should_rollback_channel_after_sync_failure(channel_existed_before_persist: bool) -> bool {
+    !channel_existed_before_persist
+}
+
 async fn source_profile_for_channel(
     store: &db::Store,
     channel: &Channel,
@@ -444,13 +483,7 @@ pub async fn add_channel(
                 container: resolved.container,
                 openalex_query: Some(structured_query),
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
+            let channel = persist_and_sync_source_profile(&state, &profile).await?;
             db::save_user_channel(
                 &state.db,
                 user_id,
@@ -485,13 +518,7 @@ pub async fn add_channel(
                     }
                 }
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
+            let channel = persist_and_sync_source_profile(&state, &profile).await?;
             db::save_user_channel(
                 &state.db,
                 user_id,
@@ -517,13 +544,7 @@ pub async fn add_channel(
                 container: material.container,
                 openalex_query: None,
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
+            let channel = persist_and_sync_source_profile(&state, &profile).await?;
             db::save_user_channel(
                 &state.db,
                 user_id,
