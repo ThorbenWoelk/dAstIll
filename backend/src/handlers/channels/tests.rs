@@ -170,9 +170,58 @@ async fn workspace_bootstrap_includes_search_status_for_initial_render() {
 }
 
 #[test]
-fn failed_sync_rollback_only_targets_newly_created_channels() {
-    assert!(should_rollback_channel_after_sync_failure(false));
-    assert!(!should_rollback_channel_after_sync_failure(true));
+fn failed_sync_rollback_only_targets_empty_newly_created_channels() {
+    assert!(should_rollback_channel_after_sync_failure(false, false));
+    assert!(!should_rollback_channel_after_sync_failure(true, false));
+    assert!(!should_rollback_channel_after_sync_failure(false, true));
+    assert!(!should_rollback_channel_after_sync_failure(true, true));
+}
+
+#[tokio::test]
+async fn failed_sync_rolls_back_empty_newly_created_channel() {
+    let store = Store::for_test().await;
+    let channel_id = "website:new-empty-rollback".to_string();
+    let state = test_app_state(store.clone()).await;
+    let profile = SourceProfileRecord {
+        source: ContentSource {
+            id: channel_id.clone(),
+            provider: ProviderKind::Website,
+            source_kind: ContentSourceKind::Website,
+            container_id: "websites".to_string(),
+            container_kind: SubscriptionContainerKind::StandaloneTrackedSource,
+            backing_kind: SourceBackingKind::Manual,
+            title: "New Empty Site".to_string(),
+            subtitle: Some("https://127.0.0.1:9/missing-page".to_string()),
+            handle: Some("https://127.0.0.1:9/missing-page".to_string()),
+            thumbnail_url: None,
+            requires_auth: false,
+            public_content_available: true,
+            entitled_content_available: true,
+            external_ids: vec![ProviderIdentity {
+                provider: ProviderKind::Website,
+                external_id: channel_id.clone(),
+            }],
+        },
+        container: SubscriptionContainer {
+            id: "websites".to_string(),
+            kind: SubscriptionContainerKind::StandaloneTrackedSource,
+            title: "Websites".to_string(),
+            provider: ProviderKind::Website,
+            backing_kind: SourceBackingKind::Manual,
+            user_editable: true,
+            source_ids: vec![channel_id.clone()],
+        },
+        openalex_query: None,
+    };
+
+    let err = persist_and_sync_source_profile(&state, &profile)
+        .await
+        .expect_err("sync against unreachable page should fail");
+    assert_eq!(err.0, axum::http::StatusCode::BAD_GATEWAY);
+    assert!(
+        get_channel(&store, &channel_id).await.unwrap().is_none(),
+        "empty newly created channel should be rolled back after sync failure"
+    );
 }
 
 #[tokio::test]

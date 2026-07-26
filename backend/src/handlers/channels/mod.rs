@@ -119,13 +119,19 @@ async fn persist_and_sync_source_profile(
         .map_err(map_db_err)?;
 
     if let Err(err) = sync_source_profile(state, profile).await {
-        if should_rollback_channel_after_sync_failure(channel_existed) {
+        let has_canonical_videos = db::list_video_ids_by_channel(&state.db, &channel.id)
+            .await
+            .map(|ids| !ids.is_empty())
+            .unwrap_or(true);
+        if should_rollback_channel_after_sync_failure(channel_existed, has_canonical_videos) {
             let _ = delete_channel_with_search_cleanup(state, &channel.id).await;
         } else {
             tracing::warn!(
                 channel_id = %channel.id,
+                channel_existed_before_persist = channel_existed,
+                has_canonical_videos,
                 error = %err,
-                "source sync failed for existing shared channel - leaving canonical data intact"
+                "source sync failed - leaving canonical catalog data intact"
             );
         }
         return Err((StatusCode::BAD_GATEWAY, err));
@@ -134,8 +140,16 @@ async fn persist_and_sync_source_profile(
     Ok(channel)
 }
 
-fn should_rollback_channel_after_sync_failure(channel_existed_before_persist: bool) -> bool {
-    !channel_existed_before_persist
+/// Roll back a failed first-time subscribe only when this call created an empty
+/// channel. Skip rollback when:
+/// - the channel already existed (shared/seeded catalog), or
+/// - videos are already present (a concurrent first-time subscribe may have
+///   finished syncing while this call failed).
+fn should_rollback_channel_after_sync_failure(
+    channel_existed_before_persist: bool,
+    has_canonical_videos: bool,
+) -> bool {
+    !channel_existed_before_persist && !has_canonical_videos
 }
 
 async fn source_profile_for_channel(
