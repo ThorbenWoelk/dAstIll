@@ -186,10 +186,12 @@ pub fn build_app(
         )
         .route(
             "/api/videos/info/backfill",
-            post(videos::backfill_video_info).layer(middleware::from_fn_with_state(
-                state.clone(),
-                enforce_expensive_rate_limit,
-            )),
+            post(videos::backfill_video_info)
+                .layer(middleware::from_fn(require_operator_role))
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    enforce_expensive_rate_limit,
+                )),
         )
         .route("/api/videos/{id}/transcript", get(content::get_transcript))
         .route(
