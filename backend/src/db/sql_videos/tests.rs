@@ -1,5 +1,6 @@
 use super::{
     content_status_from_str, content_status_to_str, reconcile_video_statuses_from_storage,
+    sql_get_video, sql_insert_video,
 };
 use crate::models::{ContentStatus, Video};
 
@@ -57,4 +58,50 @@ fn content_status_round_trips_through_str() {
             status
         );
     }
+}
+
+#[tokio::test]
+async fn insert_refuses_to_reassign_video_across_channels_on_id_conflict() {
+    let store = crate::db::Store::for_test().await;
+    let original = Video {
+        id: "podcast:episode:episode-1".to_string(),
+        channel_id: "podcast:rss:feed-a".to_string(),
+        title: "Feed A episode".to_string(),
+        thumbnail_url: None,
+        published_at: chrono::Utc::now(),
+        is_short: false,
+        transcript_status: ContentStatus::Ready,
+        summary_status: ContentStatus::Pending,
+        acknowledged: false,
+        retry_count: 0,
+        quality_score: None,
+    };
+    sql_insert_video(&store, &original)
+        .await
+        .expect("initial insert should succeed");
+
+    let colliding = Video {
+        id: original.id.clone(),
+        channel_id: "podcast:rss:feed-b".to_string(),
+        title: "Feed B episode with colliding guid".to_string(),
+        thumbnail_url: None,
+        published_at: chrono::Utc::now(),
+        is_short: false,
+        transcript_status: ContentStatus::Pending,
+        summary_status: ContentStatus::Pending,
+        acknowledged: false,
+        retry_count: 0,
+        quality_score: None,
+    };
+    sql_insert_video(&store, &colliding)
+        .await
+        .expect("conflict insert should not error");
+
+    let kept = sql_get_video(&store, &original.id, false)
+        .await
+        .expect("lookup should succeed")
+        .expect("video should still exist");
+    assert_eq!(kept.channel_id, "podcast:rss:feed-a");
+    assert_eq!(kept.title, "Feed A episode");
+    assert_eq!(kept.transcript_status, ContentStatus::Ready);
 }

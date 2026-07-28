@@ -69,6 +69,39 @@ pub fn podcast_source_id_for_feed_url(feed_url: &str) -> String {
     format!("podcast:rss:{}", normalize_feed_id(feed_url))
 }
 
+fn podcast_feed_key(source: &ContentSource) -> &str {
+    source
+        .id
+        .strip_prefix("podcast:rss:")
+        .unwrap_or(source.id.as_str())
+}
+
+/// Legacy unscoped episode id (guid only). Kept for same-channel reuse after namespacing.
+pub fn podcast_episode_legacy_item_id(external_id: &str) -> String {
+    format!("podcast:episode:{}", normalize_feed_id(external_id))
+}
+
+/// Feed-scoped episode id so colliding RSS guids cannot steal catalog rows across podcasts.
+pub fn podcast_episode_item_id(source: &ContentSource, external_id: &str) -> String {
+    format!(
+        "podcast:episode:{}:{}",
+        podcast_feed_key(source),
+        normalize_feed_id(external_id)
+    )
+}
+
+pub fn podcast_episode_part_id(kind: &str, source: &ContentSource, external_id: &str) -> String {
+    format!(
+        "podcast:{kind}:{}:{}",
+        podcast_feed_key(source),
+        normalize_feed_id(external_id)
+    )
+}
+
+pub fn podcast_episode_legacy_part_id(kind: &str, external_id: &str) -> String {
+    format!("podcast:{kind}:{}", normalize_feed_id(external_id))
+}
+
 fn parse_rss_date(value: Option<&str>) -> Option<DateTime<Utc>> {
     let raw = value?;
     DateTime::parse_from_rfc2822(raw)
@@ -425,8 +458,7 @@ fn build_podcast_sync_batch(source: &ContentSource, feed: &RssChannel) -> Synced
             continue;
         };
 
-        let compact_id = normalize_feed_id(&external_id);
-        let item_id = format!("podcast:episode:{compact_id}");
+        let item_id = podcast_episode_item_id(source, &external_id);
         let title = item.title().unwrap_or("Untitled episode").to_string();
 
         items.push(ContentItem {
@@ -439,13 +471,13 @@ fn build_podcast_sync_batch(source: &ContentSource, feed: &RssChannel) -> Synced
             published_at: parse_rss_date(item.pub_date()),
             external_ids: vec![ProviderIdentity {
                 provider: ProviderKind::PodcastRss,
-                external_id,
+                external_id: external_id.clone(),
             }],
         });
 
         if item_summary(item).is_some() {
             parts.push(ContentPart {
-                id: format!("podcast:show-notes:{compact_id}"),
+                id: podcast_episode_part_id("show-notes", source, &external_id),
                 source_id: source.id.clone(),
                 item_id: item_id.clone(),
                 provider: ProviderKind::PodcastRss,
@@ -457,7 +489,7 @@ fn build_podcast_sync_batch(source: &ContentSource, feed: &RssChannel) -> Synced
 
         if !item_transcript_references(feed, item).is_empty() {
             parts.push(ContentPart {
-                id: format!("podcast:transcript:{compact_id}"),
+                id: podcast_episode_part_id("transcript", source, &external_id),
                 source_id: source.id.clone(),
                 item_id: item_id.clone(),
                 provider: ProviderKind::PodcastRss,
@@ -469,7 +501,7 @@ fn build_podcast_sync_batch(source: &ContentSource, feed: &RssChannel) -> Synced
 
         if let Some(enclosure) = item.enclosure() {
             media_assets.push(MediaAsset {
-                id: format!("podcast:audio:{compact_id}"),
+                id: podcast_episode_part_id("audio", source, &external_id),
                 source_id: source.id.clone(),
                 item_id,
                 provider: ProviderKind::PodcastRss,
@@ -519,8 +551,7 @@ impl PodcastFeedService {
                 let Some(external_id) = item_guid(item) else {
                     continue;
                 };
-                let compact_id = normalize_feed_id(&external_id);
-                let item_id = format!("podcast:episode:{compact_id}");
+                let item_id = podcast_episode_item_id(source, &external_id);
                 let title = item.title().unwrap_or("Untitled episode").to_string();
                 let watch_url = item
                     .link()
@@ -531,7 +562,7 @@ impl PodcastFeedService {
                     })
                     .unwrap_or_else(|| external_id.clone());
                 let audio_asset = item.enclosure().map(|enclosure| MediaAsset {
-                    id: format!("podcast:audio:{compact_id}"),
+                    id: podcast_episode_part_id("audio", source, &external_id),
                     source_id: source.id.clone(),
                     item_id: item_id.clone(),
                     provider: ProviderKind::PodcastRss,

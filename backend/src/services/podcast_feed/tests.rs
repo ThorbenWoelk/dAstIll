@@ -1,7 +1,7 @@
 use super::{
     PodcastFeedService, build_podcast_resolved_source, build_podcast_sync_batch,
     caption_payload_to_text, item_transcript_references, json_transcript_to_text,
-    transcript_payload_to_text,
+    podcast_episode_item_id, podcast_episode_legacy_item_id, transcript_payload_to_text,
 };
 use crate::models::{ContentItemKind, ContentSourceKind, MediaAssetKind, ProviderKind};
 
@@ -58,10 +58,18 @@ fn sync_batch_maps_episode_show_notes_and_audio() {
 
     assert_eq!(batch.items.len(), 1);
     assert_eq!(batch.items[0].item_kind, ContentItemKind::PodcastEpisode);
+    assert_eq!(
+        batch.items[0].id,
+        "podcast:episode:https-example-com-feed-xml:episode-1"
+    );
     assert_eq!(batch.parts.len(), 2);
     assert_eq!(
         batch.parts[0].part_kind,
         crate::models::ContentPartKind::ShowNotes
+    );
+    assert_eq!(
+        batch.parts[0].id,
+        "podcast:show-notes:https-example-com-feed-xml:episode-1"
     );
     assert_eq!(
         batch.parts[1].part_kind,
@@ -73,12 +81,40 @@ fn sync_batch_maps_episode_show_notes_and_audio() {
         MediaAssetKind::SourceAudio
     );
     assert_eq!(
+        batch.media_assets[0].id,
+        "podcast:audio:https-example-com-feed-xml:episode-1"
+    );
+    assert_eq!(
         batch.media_assets[0].url.as_deref(),
         Some("https://example.com/audio.mp3")
     );
     assert_eq!(
         batch.media_assets[0].mime_type.as_deref(),
         Some("audio/mpeg")
+    );
+}
+
+#[test]
+fn episode_ids_are_namespaced_by_feed_to_prevent_guid_collisions() {
+    let feed = sample_feed();
+    let feed_a = build_podcast_resolved_source("https://example.com/feed-a.xml", &feed);
+    let feed_b = build_podcast_resolved_source("https://example.com/feed-b.xml", &feed);
+
+    let id_a = podcast_episode_item_id(&feed_a.source, "episode-1");
+    let id_b = podcast_episode_item_id(&feed_b.source, "episode-1");
+
+    assert_ne!(id_a, id_b);
+    assert_eq!(
+        id_a,
+        "podcast:episode:https-example-com-feed-a-xml:episode-1"
+    );
+    assert_eq!(
+        id_b,
+        "podcast:episode:https-example-com-feed-b-xml:episode-1"
+    );
+    assert_eq!(
+        podcast_episode_legacy_item_id("episode-1"),
+        "podcast:episode:episode-1"
     );
 }
 
