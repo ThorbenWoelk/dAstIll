@@ -1,7 +1,7 @@
 pub mod generation;
 
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, State},
     http::{StatusCode, header},
     response::IntoResponse,
@@ -16,13 +16,16 @@ use crate::models::{
 };
 use crate::search::SearchSourceKind;
 use crate::search::hash_search_content;
+use crate::security::AccessContext;
 use crate::services::summarizer::{
     MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError, apply_vocabulary_replacements,
 };
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 use crate::state::AppState;
 
-use super::{evict_video_scope_cache, map_db_err, require_present, require_video};
+use super::{
+    evict_video_scope_cache, map_db_err, require_present, require_video, require_video_for_access,
+};
 pub use generation::update_summary;
 use generation::*;
 pub(crate) use generation::{ensure_summary, ensure_summary_for_queue, ensure_transcript};
@@ -84,10 +87,11 @@ pub(crate) fn should_auto_regenerate_summary(
 )]
 pub async fn get_transcript(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::debug!(video_id = %video_id, "transcript requested");
-    require_video(&state, &video_id).await?;
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let transcript = db::get_transcript(&state.db, &video_id)
         .await
         .map_err(map_db_err)
@@ -109,9 +113,11 @@ pub async fn get_transcript(
 )]
 pub async fn generate_transcript(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "transcript generation requested");
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let transcript = ensure_transcript(&state, &video_id).await?;
     Ok(Json(transcript))
 }
@@ -130,9 +136,11 @@ pub async fn generate_transcript(
 )]
 pub async fn update_transcript(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
     Json(payload): Json<UpdateContentRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let transcript =
         save_manual_transcript_content(&state, &video_id, &payload.content, payload.render_mode)
             .await?;
@@ -155,6 +163,7 @@ pub async fn update_transcript(
 )]
 pub async fn clean_transcript_formatting(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
     Json(payload): Json<UpdateContentRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -164,7 +173,7 @@ pub async fn clean_transcript_formatting(
         input_chars = payload.content.len(),
         "transcript clean formatting requested"
     );
-    let video = require_video(&state, &video_id).await?;
+    let video = require_video_for_access(&state, &access_context, &video_id).await?;
 
     if payload.content.trim().is_empty() {
         tracing::info!(video_id = %video_id, "transcript clean skipped for empty input");
@@ -256,10 +265,11 @@ pub async fn clean_transcript_formatting(
 )]
 pub async fn get_summary(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::debug!(video_id = %video_id, "summary requested");
-    require_video(&state, &video_id).await?;
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let summary = db::get_summary(&state.db, &video_id)
         .await
         .map_err(map_db_err)
@@ -309,10 +319,11 @@ async fn get_summary_audio_cache_info(
 )]
 pub async fn get_summary_audio(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary audio requested");
-    require_video(&state, &video_id).await?;
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let summary = db::get_summary(&state.db, &video_id)
         .await
         .map_err(map_db_err)
@@ -367,10 +378,11 @@ pub async fn get_summary_audio(
 )]
 pub async fn generate_summary_audio(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary audio generation requested");
-    require_video(&state, &video_id).await?;
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let summary = db::get_summary(&state.db, &video_id)
         .await
         .map_err(map_db_err)
@@ -439,9 +451,10 @@ pub struct SummaryAudioDebugResponse {
 )]
 pub async fn get_summary_audio_debug(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<Json<SummaryAudioDebugResponse>, (StatusCode, String)> {
-    require_video(&state, &video_id).await?;
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let summary = db::get_summary(&state.db, &video_id)
         .await
         .map_err(map_db_err)
@@ -497,9 +510,11 @@ pub async fn get_summary_audio_debug(
 )]
 pub async fn generate_summary(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary generation requested");
+    require_video_for_access(&state, &access_context, &video_id).await?;
     let summary = ensure_summary(&state, &video_id).await?;
     Ok(Json(summary))
 }
@@ -518,10 +533,11 @@ pub async fn generate_summary(
 )]
 pub async fn regenerate_summary(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
-    let video = require_video(&state, &video_id).await?;
+    let video = require_video_for_access(&state, &access_context, &video_id).await?;
     delete_video_search_source(&state, &video_id, SearchSourceKind::Summary).await?;
     evict_video_scope_cache(&state, &video.channel_id).await?;
 
@@ -544,10 +560,11 @@ pub async fn regenerate_summary(
 )]
 pub async fn reset_video(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "video reset requested");
-    let video = require_video(&state, &video_id).await?;
+    let video = require_video_for_access(&state, &access_context, &video_id).await?;
     audit::log_video_reset(&video_id, &video.channel_id);
 
     delete_video_search_source(&state, &video_id, SearchSourceKind::Transcript).await?;
@@ -583,3 +600,7 @@ pub async fn health_ai(State(state): State<AppState>) -> impl IntoResponse {
         .indicator_status(state.cloud_cooldown.is_active(), available);
     Json(crate::models::AiHealthPayload { available, status })
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

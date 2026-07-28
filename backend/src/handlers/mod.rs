@@ -104,7 +104,7 @@ pub(crate) async fn require_video_for_access(
     access_context: &AccessContext,
     video_id: &str,
 ) -> Result<Video, (StatusCode, String)> {
-    let Some(video) = db::get_video(&state.db, video_id, true)
+    let Some(video) = db::get_video(&state.db, video_id, false)
         .await
         .map_err(map_db_err)?
     else {

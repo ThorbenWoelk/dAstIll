@@ -48,6 +48,33 @@ describe("summary audio session", () => {
     });
   });
 
+  it("keeps ready audio when a stale debug miss arrives after generation", async () => {
+    resetSummaryAudioSessionsForTesting();
+
+    await generateSummaryAudio(
+      "video-1",
+      async () => new Response("", { status: 200 }),
+    );
+    expect(readSummaryAudioSession("video-1")).toMatchObject({
+      status: "ready",
+      audioRequested: false,
+      audioSrc: "/api/videos/video-1/summary/audio",
+    });
+
+    syncSummaryAudioDebugState("video-1", {
+      cache_hit: false,
+      word_count: 120,
+      estimated_secs: 7,
+    });
+
+    expect(readSummaryAudioSession("video-1")).toMatchObject({
+      status: "ready",
+      summaryWordCount: 120,
+      estimatedSecs: 7,
+      audioSrc: "/api/videos/video-1/summary/audio",
+    });
+  });
+
   it("returns a neutral timeline state until audio duration is known", () => {
     resetSummaryAudioSessionsForTesting();
 
