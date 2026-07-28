@@ -16,11 +16,20 @@ resource "google_artifact_registry_repository" "repo" {
   }
 
   cleanup_policies {
-    id     = "delete-rest"
+    id     = "delete-old-untagged"
     action = "DELETE"
     condition {
-      tag_state  = "ANY"
-      older_than = "86400s"
+      tag_state  = "UNTAGGED"
+      older_than = "604800s"
+    }
+  }
+
+  cleanup_policies {
+    id     = "delete-old-tagged"
+    action = "DELETE"
+    condition {
+      tag_state  = "TAGGED"
+      older_than = "2592000s"
     }
   }
 
