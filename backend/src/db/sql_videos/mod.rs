@@ -128,6 +128,15 @@ pub async fn sql_insert_video(
     };
 
     let (merged, outcome) = if let Some(existing) = existing {
+        if existing.channel_id != video.channel_id {
+            tracing::warn!(
+                video_id = %video.id,
+                existing_channel_id = %existing.channel_id,
+                attempted_channel_id = %video.channel_id,
+                "refusing to reassign video across channels on id conflict"
+            );
+            return Ok(super::VideoInsertOutcome::Existing);
+        }
         let merged = Video {
             id: video.id.clone(),
             channel_id: video.channel_id.clone(),
@@ -225,6 +234,15 @@ pub async fn sql_bulk_insert_videos(
     let mut inserted = 0usize;
     for video in &videos {
         let (merged, outcome) = if let Some(existing) = existing_map.get(&video.id) {
+            if existing.channel_id != video.channel_id {
+                tracing::warn!(
+                    video_id = %video.id,
+                    existing_channel_id = %existing.channel_id,
+                    attempted_channel_id = %video.channel_id,
+                    "refusing to reassign video across channels on id conflict"
+                );
+                continue;
+            }
             let merged = Video {
                 id: video.id.clone(),
                 channel_id: video.channel_id.clone(),

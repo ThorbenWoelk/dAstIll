@@ -6,6 +6,7 @@ use crate::models::{
 };
 use crate::state::AppState;
 
+use super::podcast_feed::{podcast_episode_legacy_item_id, podcast_episode_legacy_part_id};
 use super::{OpenAlexPublicationMaterial, PodcastEpisodeMaterial};
 
 fn compatibility_channel_from_source(source: &ContentSource) -> Channel {
@@ -69,6 +70,43 @@ fn podcast_video(source: &ContentSource, material: &PodcastEpisodeMaterial) -> V
         retry_count: 0,
         quality_score: None,
     }
+}
+
+/// Prefer a same-channel legacy unscoped episode id so deploy doesn't duplicate rows.
+async fn stabilize_podcast_episode_ids(
+    store: &db::Store,
+    source: &ContentSource,
+    material: &PodcastEpisodeMaterial,
+) -> Result<(Video, Option<crate::models::MediaAsset>), StoreError> {
+    let mut video = podcast_video(source, material);
+    let mut audio_asset = material.audio_asset.clone();
+
+    let Some(external_id) = material
+        .item
+        .external_ids
+        .first()
+        .map(|identity| identity.external_id.as_str())
+    else {
+        return Ok((video, audio_asset));
+    };
+
+    let legacy_id = podcast_episode_legacy_item_id(external_id);
+    if legacy_id == video.id {
+        return Ok((video, audio_asset));
+    }
+
+    if let Some(existing) = db::get_video(store, &legacy_id, false).await? {
+        if existing.channel_id == source.id {
+            video.id = legacy_id;
+            if let Some(asset) = audio_asset.as_mut() {
+                asset.item_id = video.id.clone();
+                asset.id = podcast_episode_legacy_part_id("audio", external_id);
+            }
+            return Ok((video, audio_asset));
+        }
+    }
+
+    Ok((video, audio_asset))
 }
 
 fn website_video(material: &crate::services::website::WebsitePageMaterial) -> Video {
@@ -209,11 +247,14 @@ pub async fn sync_source_profile(
                 .await
                 .map_err(|err| err.to_string())?;
             for material in &materials {
-                let video = podcast_video(&profile.source, material);
+                let (video, audio_asset) =
+                    stabilize_podcast_episode_ids(&state.db, &profile.source, material)
+                        .await
+                        .map_err(|err| err.to_string())?;
                 upsert_compat_video(&state.db, &video)
                     .await
                     .map_err(|err| err.to_string())?;
-                if let Some(audio_asset) = material.audio_asset.as_ref() {
+                if let Some(audio_asset) = audio_asset.as_ref() {
                     db::upsert_media_asset(&state.db, audio_asset)
                         .await
                         .map_err(|err| err.to_string())?;
