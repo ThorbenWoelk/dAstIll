@@ -225,7 +225,7 @@ jobs:
       - detect-changes
       - checks
       - wait-for-infra
-    if: always() && needs.detect-changes.outputs.backend == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled'
+    if: always() && needs.checks.result == 'success' && needs.detect-changes.outputs.backend == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -373,7 +373,7 @@ jobs:
       - detect-changes
       - checks
       - wait-for-infra
-    if: always() && needs.detect-changes.outputs.docs == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled'
+    if: always() && needs.checks.result == 'success' && needs.detect-changes.outputs.docs == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -444,7 +444,7 @@ jobs:
       - checks
       - wait-for-infra
       - deploy-backend
-    if: always() && needs.detect-changes.outputs.frontend == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled' && needs.deploy-backend.result != 'failure'
+    if: always() && needs.checks.result == 'success' && needs.detect-changes.outputs.frontend == 'true' && needs.wait-for-infra.result != 'failure' && needs.wait-for-infra.result != 'cancelled' && needs.deploy-backend.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

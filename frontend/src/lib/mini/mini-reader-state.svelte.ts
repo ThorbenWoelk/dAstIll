@@ -109,6 +109,25 @@ export async function saveMiniVocabularyPreferences(
 
 export type MiniReaderStatus = "idle" | "loading" | "ready" | "empty" | "error";
 
+export function visibleMiniSummaries(
+  reader: MiniReader,
+  showUnreadOnly: boolean,
+): MiniSummaryItem[] {
+  return showUnreadOnly
+    ? reader.summaries.filter((summary) => !summary.read)
+    : reader.summaries;
+}
+
+export function miniReaderReadyStatus(
+  reader: MiniReader,
+  showUnreadOnly: boolean,
+): Extract<MiniReaderStatus, "ready" | "empty"> {
+  return reader.channels.length === 0 ||
+    visibleMiniSummaries(reader, showUnreadOnly).length === 0
+    ? "empty"
+    : "ready";
+}
+
 export class MiniReaderState {
   reader = $state<MiniReader | null>(null);
   status = $state<MiniReaderStatus>("loading");
@@ -152,11 +171,7 @@ export class MiniReaderState {
   });
 
   visibleSummaries = $derived(
-    this.reader
-      ? this.showUnreadOnly
-        ? this.reader.summaries.filter((s) => !s.read)
-        : this.reader.summaries
-      : [],
+    this.reader ? visibleMiniSummaries(this.reader, this.showUnreadOnly) : [],
   );
 
   activeIndex = $derived(
@@ -228,13 +243,7 @@ export class MiniReaderState {
         preferredVideoId,
       );
       this.readProgress = 0;
-      const visible = this.showUnreadOnly
-        ? reader.summaries.filter((s) => !s.read)
-        : reader.summaries;
-      this.status =
-        reader.channels.length === 0 || visible.length === 0
-          ? "empty"
-          : "ready";
+      this.status = miniReaderReadyStatus(reader, this.showUnreadOnly);
     } catch (cause) {
       const message =
         cause instanceof Error ? cause.message : "Could not load dastill-mini.";
@@ -375,6 +384,7 @@ export class MiniReaderState {
             s.video_id === markedId ? { ...s, read: true } : s,
           );
       this.activeVideoId = chooseActiveVideoId(nextVisible, markedId);
+      this.syncReaderReadyStatus();
       this.contentKey += 1;
       this.readProgress = 0;
     } catch (cause) {
@@ -410,6 +420,7 @@ export class MiniReaderState {
       const nextUnreadVideoId = findNextUnreadVideoId(summaries, markedId);
       this.activeVideoId =
         nextUnreadVideoId ?? (this.showUnreadOnly ? null : markedId);
+      this.syncReaderReadyStatus();
       this.contentKey += 1;
       this.readProgress = 0;
     } catch (cause) {
@@ -475,10 +486,12 @@ export class MiniReaderState {
 
   toggleUnreadFilter() {
     this.showUnreadOnly = !this.showUnreadOnly;
+    this.syncReaderReadyStatus();
   }
 
   clearUnreadFilter() {
     this.showUnreadOnly = false;
+    this.syncReaderReadyStatus();
   }
 
   updateReadProgress(
@@ -500,6 +513,13 @@ export class MiniReaderState {
       this.contentKey += 1;
       this.readProgress = 0;
     }
+  }
+
+  private syncReaderReadyStatus() {
+    if (!this.reader || this.status === "loading" || this.status === "error") {
+      return;
+    }
+    this.status = miniReaderReadyStatus(this.reader, this.showUnreadOnly);
   }
 }
 
