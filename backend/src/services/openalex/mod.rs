@@ -85,19 +85,19 @@ fn saved_search_fingerprint(query: &OpenAlexSavedSearchQuery) -> String {
     hasher.update(query.work_type.as_deref().unwrap_or("").trim().as_bytes());
     hasher.update([0]);
     hasher.update(match query.open_access_only {
-        Some(true) => b"oa:1".as_slice(),
-        Some(false) => b"oa:0".as_slice(),
-        None => b"oa:".as_slice(),
+        Some(true) => b"oa:1" as &[u8],
+        Some(false) => b"oa:0",
+        None => b"oa:",
     });
     hasher.update([0]);
     hasher.update(match query.search_scope {
-        OpenAlexSearchScope::GeneralSearch => b"scope:general".as_slice(),
-        OpenAlexSearchScope::TitleAndAbstract => b"scope:title_abstract".as_slice(),
+        OpenAlexSearchScope::GeneralSearch => b"scope:general" as &[u8],
+        OpenAlexSearchScope::TitleAndAbstract => b"scope:title_abstract",
     });
     hasher.update([0]);
     hasher.update(match query.sort {
-        OpenAlexSort::PublicationDateDesc => b"sort:pub_desc".as_slice(),
-        OpenAlexSort::RelevanceScoreDesc => b"sort:rel_desc".as_slice(),
+        OpenAlexSort::PublicationDateDesc => b"sort:pub_desc" as &[u8],
+        OpenAlexSort::RelevanceScoreDesc => b"sort:rel_desc",
     });
     hasher
         .finalize()
