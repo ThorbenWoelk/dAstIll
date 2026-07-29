@@ -1,6 +1,7 @@
 use chrono::Utc;
 use reqwest::Client;
 use scraper::{Html, Selector};
+use sha2::{Digest, Sha256};
 
 use crate::models::{
     ContentItem, ContentItemKind, ContentSource, ContentSourceKind, ProviderIdentity, ProviderKind,
@@ -30,6 +31,24 @@ fn slugify_url(value: &str) -> String {
         slug.push(mapped);
     }
     slug.trim_matches('-').to_string()
+}
+
+fn short_url_fingerprint(url: &str) -> String {
+    let digest = Sha256::digest(url.as_bytes());
+    digest
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Stable catalog key for a website URL.
+///
+/// Slugifying alone collapses distinct URLs (`foo_bar` vs `foo-bar`, trailing
+/// slash, etc.) onto one id and lets later subscribe/sync overwrite shared
+/// channel, video, and transcript rows. Append a fingerprint of the exact URL.
+pub fn website_url_identity(url: &str) -> String {
+    format!("{}:{}", slugify_url(url), short_url_fingerprint(url))
 }
 
 fn selector(value: &str) -> Option<Selector> {
@@ -118,7 +137,8 @@ impl WebsiteService {
             ));
         }
 
-        let source_id = format!("website:{}", slugify_url(parsed.as_str()));
+        let url_key = website_url_identity(parsed.as_str());
+        let source_id = format!("website:{url_key}");
         let container = SubscriptionContainer {
             id: "websites".to_string(),
             kind: SubscriptionContainerKind::StandaloneTrackedSource,
@@ -149,7 +169,7 @@ impl WebsiteService {
         };
         let excerpt = Some(first_chars(&text_content, 220));
         let item = ContentItem {
-            id: format!("website:item:{}", slugify_url(parsed.as_str())),
+            id: format!("website:item:{url_key}"),
             source_id,
             provider: ProviderKind::Website,
             item_kind: ContentItemKind::Webpage,
