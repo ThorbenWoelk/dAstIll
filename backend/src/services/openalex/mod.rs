@@ -1,6 +1,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use reqwest::Client;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -39,6 +40,81 @@ fn slugify_query(value: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn saved_search_has_non_default_options(query: &OpenAlexSavedSearchQuery) -> bool {
+    query
+        .from_publication_date
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || query
+            .to_publication_date
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || query
+            .work_type
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || query.open_access_only == Some(true)
+        || query.search_scope != OpenAlexSearchScope::default()
+        || query.sort != OpenAlexSort::default()
+}
+
+fn saved_search_fingerprint(query: &OpenAlexSavedSearchQuery) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(query.query_text.trim().as_bytes());
+    hasher.update([0]);
+    hasher.update(
+        query
+            .from_publication_date
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .as_bytes(),
+    );
+    hasher.update([0]);
+    hasher.update(
+        query
+            .to_publication_date
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .as_bytes(),
+    );
+    hasher.update([0]);
+    hasher.update(query.work_type.as_deref().unwrap_or("").trim().as_bytes());
+    hasher.update([0]);
+    hasher.update(match query.open_access_only {
+        Some(true) => b"oa:1".as_slice(),
+        Some(false) => b"oa:0".as_slice(),
+        None => b"oa:".as_slice(),
+    });
+    hasher.update([0]);
+    hasher.update(match query.search_scope {
+        OpenAlexSearchScope::GeneralSearch => b"scope:general".as_slice(),
+        OpenAlexSearchScope::TitleAndAbstract => b"scope:title_abstract".as_slice(),
+    });
+    hasher.update([0]);
+    hasher.update(match query.sort {
+        OpenAlexSort::PublicationDateDesc => b"sort:pub_desc".as_slice(),
+        OpenAlexSort::RelevanceScoreDesc => b"sort:rel_desc".as_slice(),
+    });
+    hasher
+        .finalize()
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Stable saved-search id. Query-text slug alone ignores filters/sort/scope, so
+/// distinct searches collapsed onto one shared catalog row and overwrote each other.
+pub fn saved_search_query_id(query: &OpenAlexSavedSearchQuery) -> String {
+    let slug = slugify_query(&query.query_text);
+    if !saved_search_has_non_default_options(query) {
+        return slug;
+    }
+    format!("{slug}:{}", saved_search_fingerprint(query))
 }
 
 fn sort_value(sort: OpenAlexSort) -> &'static str {
@@ -227,7 +303,7 @@ impl OpenAlexService {
     }
 
     fn build_saved_search_source(query: &OpenAlexSavedSearchQuery) -> ContentSource {
-        let query_id = slugify_query(&query.query_text);
+        let query_id = saved_search_query_id(query);
         let title = if query.query_text.trim().is_empty() {
             query.natural_language_query.trim()
         } else {
@@ -339,12 +415,8 @@ impl QuerySourceAdapter for OpenAlexService {
             }
 
             let source = Self::build_saved_search_source(query);
-            let title = if query.query_text.trim().is_empty() {
-                query.natural_language_query.trim()
-            } else {
-                query.query_text.trim()
-            };
-            let query_id = slugify_query(title);
+            let query_id = saved_search_query_id(query);
+            let title = source.title.as_str();
 
             Ok(ResolvedSourceDraft {
                 container: Self::build_saved_search_container(title, &query_id),
