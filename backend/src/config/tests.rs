@@ -362,7 +362,9 @@ fn security_from_env_uses_local_defaults_for_dev() {
         config.default_seeded_channel_ids,
         vec![
             "UCbRP3c757lWg9M-U7TyEkXA".to_string(),
-            "podcast:rss:https-feeds-simplecast-com-6hkohngs".to_string()
+            crate::services::podcast_feed::podcast_source_id_for_feed_url(
+                crate::config::DEFAULT_HARD_FORK_FEED_URL
+            )
         ]
     );
     assert_eq!(config.baseline_rate_limit_per_minute, 600);
