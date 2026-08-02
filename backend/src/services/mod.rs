@@ -30,7 +30,10 @@ pub use input_guardrails::{CHAT_INPUT_BLOCK_MESSAGE, InputGuardrailService};
 pub use ollama::{OllamaCore, OllamaPromptError};
 pub use openalex::{OpenAlexPublicationMaterial, OpenAlexService};
 pub use openalex_planner::OpenAlexPlannerService;
-pub use podcast_feed::{PodcastEpisodeMaterial, PodcastFeedService};
+pub use podcast_feed::{
+    PodcastEpisodeMaterial, PodcastFeedService, podcast_episode_item_id,
+    podcast_episode_legacy_item_id,
+};
 pub use providers::{
     FeedSourceAdapter, ManualWebsiteAdapter, ManualWebsiteAdapterContract, ProviderAdapterError,
     QuerySourceAdapter, ResolvedSourceDraft, SyncedSourceBatch,
