@@ -6,14 +6,30 @@ use thiserror::Error;
 
 fn strip_html_tags(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
-    let mut in_tag = false;
+    let mut chars = input.chars().peekable();
 
-    for ch in input.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' if in_tag => in_tag = false,
-            _ if !in_tag => output.push(ch),
-            _ => {}
+    while let Some(ch) = chars.next() {
+        if ch != '<' {
+            output.push(ch);
+            continue;
+        }
+
+        // Only treat sequences that look like HTML/XML markup as tags.
+        // Bare comparisons like `p < 0.05` or `N < 10` must keep following text.
+        let is_markup = matches!(chars.peek(), Some(next) if next.is_ascii_alphabetic()
+            || *next == '/'
+            || *next == '!'
+            || *next == '?');
+
+        if !is_markup {
+            output.push('<');
+            continue;
+        }
+
+        for next in chars.by_ref() {
+            if next == '>' {
+                break;
+            }
         }
     }
 
@@ -483,5 +499,49 @@ mod tests {
         let wav = wrap_pcm_s16le_mono_to_wav(vec![0, 0, 1, 0], 16_000);
         assert!(wav.starts_with(b"RIFF"));
         assert_eq!(&wav[8..12], b"WAVE");
+    }
+
+    #[test]
+    fn strip_html_tags_keeps_text_after_comparison_operators() {
+        assert_eq!(
+            strip_html_tags("Effect size was p < 0.05 in the trial."),
+            "Effect size was p < 0.05 in the trial."
+        );
+        assert_eq!(
+            strip_html_tags("When N < 10, results are unstable."),
+            "When N < 10, results are unstable."
+        );
+        assert_eq!(strip_html_tags("x <= y and a >= b"), "x <= y and a >= b");
+    }
+
+    #[test]
+    fn strip_html_tags_still_removes_markup() {
+        assert_eq!(
+            strip_html_tags("Use <b>bold</b> carefully."),
+            "Use bold carefully."
+        );
+        assert_eq!(
+            strip_html_tags("Hello <!-- note --> world"),
+            "Hello  world"
+        );
+    }
+
+    #[test]
+    fn sanitize_markdown_for_tts_does_not_truncate_after_comparisons() {
+        let sanitized = sanitize_markdown_for_tts(
+            "The model wins when N < 10 and p < 0.05 in the holdout set.",
+        );
+        assert!(
+            sanitized.contains("0.05"),
+            "expected significance value to survive sanitization, got {sanitized:?}"
+        );
+        assert!(
+            sanitized.contains("holdout"),
+            "expected trailing summary text to survive sanitization, got {sanitized:?}"
+        );
+        assert!(
+            sanitized.contains("10"),
+            "expected comparison operand to survive sanitization, got {sanitized:?}"
+        );
     }
 }
