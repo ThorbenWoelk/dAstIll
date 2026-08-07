@@ -251,14 +251,17 @@ async fn evict_video_scope_cache_by_video_id(state: &AppState, video_id: &str) {
     request_body = UpdateContentRequest,
     responses(
         (status = 200, description = "Updated summary", body = Summary),
+        (status = 403, description = "Sign-in required", body = String),
         (status = 404, description = "Video not found", body = String)
     )
 )]
 pub async fn update_summary(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
     Json(payload): Json<UpdateContentRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_content_mutation(&access_context)?;
     let summary = save_manual_summary_content(&state, &video_id, &payload.content).await?;
     Ok(Json(summary))
 }
