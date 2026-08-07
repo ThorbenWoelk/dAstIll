@@ -185,13 +185,16 @@ async fn anonymous_reset_cannot_wipe_shared_catalog_content() {
     let state = test_app_state().await;
     let video_id = seed_shared_video(&state).await;
 
-    let error = reset_video(
+    let error = match reset_video(
         State(state.clone()),
         Extension(anonymous_access_context()),
         Path(video_id.clone()),
     )
     .await
-    .expect_err("anonymous reset must be rejected");
+    {
+        Ok(_) => panic!("anonymous reset must be rejected"),
+        Err(error) => error,
+    };
     assert_eq!(error.0, StatusCode::FORBIDDEN);
 
     let transcript = db::get_transcript(&state.db, &video_id)
@@ -211,7 +214,7 @@ async fn anonymous_manual_edits_cannot_overwrite_shared_catalog_content() {
     let state = test_app_state().await;
     let video_id = seed_shared_video(&state).await;
 
-    let transcript_error = update_transcript(
+    let transcript_error = match update_transcript(
         State(state.clone()),
         Extension(anonymous_access_context()),
         Path(video_id.clone()),
@@ -221,10 +224,13 @@ async fn anonymous_manual_edits_cannot_overwrite_shared_catalog_content() {
         }),
     )
     .await
-    .expect_err("anonymous transcript edit must be rejected");
+    {
+        Ok(_) => panic!("anonymous transcript edit must be rejected"),
+        Err(error) => error,
+    };
     assert_eq!(transcript_error.0, StatusCode::FORBIDDEN);
 
-    let summary_error = update_summary(
+    let summary_error = match update_summary(
         State(state.clone()),
         Extension(anonymous_access_context()),
         Path(video_id.clone()),
@@ -234,16 +240,22 @@ async fn anonymous_manual_edits_cannot_overwrite_shared_catalog_content() {
         }),
     )
     .await
-    .expect_err("anonymous summary edit must be rejected");
+    {
+        Ok(_) => panic!("anonymous summary edit must be rejected"),
+        Err(error) => error,
+    };
     assert_eq!(summary_error.0, StatusCode::FORBIDDEN);
 
-    let regenerate_error = regenerate_summary(
+    let regenerate_error = match regenerate_summary(
         State(state.clone()),
         Extension(anonymous_access_context()),
         Path(video_id.clone()),
     )
     .await
-    .expect_err("anonymous regenerate must be rejected");
+    {
+        Ok(_) => panic!("anonymous regenerate must be rejected"),
+        Err(error) => error,
+    };
     assert_eq!(regenerate_error.0, StatusCode::FORBIDDEN);
 
     let transcript = db::get_transcript(&state.db, &video_id)
