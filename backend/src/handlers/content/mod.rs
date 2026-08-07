@@ -1,7 +1,7 @@
 pub mod generation;
 
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, State},
     http::{StatusCode, header},
     response::IntoResponse,
@@ -16,6 +16,7 @@ use crate::models::{
 };
 use crate::search::SearchSourceKind;
 use crate::search::hash_search_content;
+use crate::security::{AccessContext, AuthState};
 use crate::services::summarizer::{
     MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError, apply_vocabulary_replacements,
 };
@@ -29,6 +30,20 @@ pub(crate) use generation::{ensure_summary, ensure_summary_for_queue, ensure_tra
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
+
+/// Shared catalog transcripts/summaries are global. Guests may read seeded channels, but
+/// must not overwrite or wipe content that every subscriber sees.
+fn require_authenticated_content_mutation(
+    access_context: &AccessContext,
+) -> Result<&str, (StatusCode, String)> {
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+    Ok(user_id)
+}
 
 fn map_fts_err(err: String) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, err)
@@ -125,14 +140,17 @@ pub async fn generate_transcript(
     request_body = UpdateContentRequest,
     responses(
         (status = 200, description = "Updated transcript", body = Transcript),
+        (status = 403, description = "Sign-in required", body = String),
         (status = 404, description = "Video not found", body = String)
     )
 )]
 pub async fn update_transcript(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
     Json(payload): Json<UpdateContentRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_content_mutation(&access_context)?;
     let transcript =
         save_manual_transcript_content(&state, &video_id, &payload.content, payload.render_mode)
             .await?;
@@ -512,15 +530,18 @@ pub async fn generate_summary(
     ),
     responses(
         (status = 200, description = "Regenerated summary", body = Summary),
+        (status = 403, description = "Sign-in required", body = String),
         (status = 404, description = "Video not found", body = String),
         (status = 503, description = "Summarizer unavailable", body = String)
     )
 )]
 pub async fn regenerate_summary(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
+    require_authenticated_content_mutation(&access_context)?;
     let video = require_video(&state, &video_id).await?;
     delete_video_search_source(&state, &video_id, SearchSourceKind::Summary).await?;
     evict_video_scope_cache(&state, &video.channel_id).await?;
@@ -539,14 +560,17 @@ pub async fn regenerate_summary(
     ),
     responses(
         (status = 204, description = "Reset video processing state"),
+        (status = 403, description = "Sign-in required", body = String),
         (status = 404, description = "Video not found", body = String)
     )
 )]
 pub async fn reset_video(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "video reset requested");
+    require_authenticated_content_mutation(&access_context)?;
     let video = require_video(&state, &video_id).await?;
     audit::log_video_reset(&video_id, &video.channel_id);
 
@@ -583,3 +607,6 @@ pub async fn health_ai(State(state): State<AppState>) -> impl IntoResponse {
         .indicator_status(state.cloud_cooldown.is_active(), available);
     Json(crate::models::AiHealthPayload { available, status })
 }
+
+#[cfg(test)]
+mod tests;
