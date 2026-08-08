@@ -25,7 +25,9 @@ use crate::state::AppState;
 use super::{evict_video_scope_cache, map_db_err, require_present, require_video};
 pub use generation::update_summary;
 use generation::*;
-pub(crate) use generation::{ensure_summary, ensure_summary_for_queue, ensure_transcript};
+pub(crate) use generation::{
+    ensure_summary, ensure_summary_force_regenerate, ensure_summary_for_queue, ensure_transcript,
+};
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
@@ -521,12 +523,36 @@ pub async fn regenerate_summary(
     Path(video_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
-    let video = require_video(&state, &video_id).await?;
-    delete_video_search_source(&state, &video_id, SearchSourceKind::Summary).await?;
-    evict_video_scope_cache(&state, &video.channel_id).await?;
-
-    let summary = ensure_summary(&state, &video_id).await?;
-    Ok(Json(summary))
+    // Do not delete the existing summary before generation succeeds. A prior
+    // delete-then-generate path permanently wiped Ready summaries when Ollama
+    // was unavailable, rate-limited, or transcript extraction failed.
+    match ensure_summary_force_regenerate(&state, &video_id).await {
+        Ok(summary) => Ok(Json(summary)),
+        Err(error) => {
+            if let Ok(Some(previous)) = db::get_summary(&state.db, &video_id).await {
+                if !previous.content.trim().is_empty() {
+                    if let Err(status_err) = db::update_video_summary_status(
+                        &state.db,
+                        &video_id,
+                        ContentStatus::Ready,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            video_id = %video_id,
+                            error = %status_err,
+                            "failed to restore ready status after regenerate failure"
+                        );
+                    } else if let Ok(Some(video)) =
+                        db::get_video(&state.db, &video_id, false).await
+                    {
+                        let _ = evict_video_scope_cache(&state, &video.channel_id).await;
+                    }
+                }
+            }
+            Err(error)
+        }
+    }
 }
 
 /// Wipe transcript, summary, quality metadata, and search vectors for a video,

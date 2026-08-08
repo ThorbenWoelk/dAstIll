@@ -134,56 +134,79 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                         match evaluation {
                             Ok(result) => {
                                 let conn = state.db.connect();
-                                let _ = db::update_summary_quality(
+                                let applied = db::update_summary_quality(
                                     &conn,
                                     &job.video_id,
+                                    &job.summary_content,
                                     result.quality_score,
                                     result.quality_note.as_deref(),
                                     result.quality_model_used.as_deref(),
                                     Some(&result.summary_tags),
                                 )
                                 .await;
-                                evict_video_scope_cache(&state, &job.video_id).await;
 
-                                tracing::info!(
-                                    video_id = %job.video_id,
-                                    score = ?result.quality_score,
-                                    model = result.quality_model_used.as_deref().unwrap_or("-"),
-                                    "summary evaluation completed"
-                                );
+                                match applied {
+                                    Ok(true) => {
+                                        evict_video_scope_cache(&state, &job.video_id).await;
 
-                                if let Some(score) = result.quality_score
-                                    && let Ok(auto_regen_attempts) =
-                                        db::get_summary_auto_regen_attempts(&conn, &job.video_id)
-                                            .await
-                                {
-                                    if should_queue_summary_auto_regeneration(
-                                        score,
-                                        auto_regen_attempts,
-                                    ) {
-                                        if let Err(err) = db::update_video_summary_status(
-                                            &conn,
-                                            &job.video_id,
-                                            ContentStatus::Pending,
-                                        )
-                                        .await
+                                        tracing::info!(
+                                            video_id = %job.video_id,
+                                            score = ?result.quality_score,
+                                            model = result.quality_model_used.as_deref().unwrap_or("-"),
+                                            "summary evaluation completed"
+                                        );
+
+                                        if let Some(score) = result.quality_score
+                                            && let Ok(auto_regen_attempts) =
+                                                db::get_summary_auto_regen_attempts(
+                                                    &conn,
+                                                    &job.video_id,
+                                                )
+                                                .await
                                         {
-                                            tracing::warn!(
-                                                video_id = %job.video_id,
-                                                error = %err,
-                                                "failed to queue low-quality summary regeneration"
-                                            );
-                                        } else {
-                                            evict_video_scope_cache(&state, &job.video_id).await;
-                                            tracing::info!(
-                                                video_id = %job.video_id,
-                                                score = score,
-                                                attempts = auto_regen_attempts,
-                                                threshold = content::MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE,
-                                                max_attempts = content::MAX_SUMMARY_AUTO_REGEN_ATTEMPTS,
-                                                "queued summary for automatic regeneration"
-                                            );
+                                            if should_queue_summary_auto_regeneration(
+                                                score,
+                                                auto_regen_attempts,
+                                            ) {
+                                                if let Err(err) = db::update_video_summary_status(
+                                                    &conn,
+                                                    &job.video_id,
+                                                    ContentStatus::Pending,
+                                                )
+                                                .await
+                                                {
+                                                    tracing::warn!(
+                                                        video_id = %job.video_id,
+                                                        error = %err,
+                                                        "failed to queue low-quality summary regeneration"
+                                                    );
+                                                } else {
+                                                    evict_video_scope_cache(&state, &job.video_id)
+                                                        .await;
+                                                    tracing::info!(
+                                                        video_id = %job.video_id,
+                                                        score = score,
+                                                        attempts = auto_regen_attempts,
+                                                        threshold = content::MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE,
+                                                        max_attempts = content::MAX_SUMMARY_AUTO_REGEN_ATTEMPTS,
+                                                        "queued summary for automatic regeneration"
+                                                    );
+                                                }
+                                            }
                                         }
+                                    }
+                                    Ok(false) => {
+                                        tracing::info!(
+                                            video_id = %job.video_id,
+                                            "summary evaluation discarded - summary content changed during evaluation"
+                                        );
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            video_id = %job.video_id,
+                                            error = %err,
+                                            "failed to persist summary evaluation"
+                                        );
                                     }
                                 }
                             }

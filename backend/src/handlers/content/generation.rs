@@ -575,47 +575,61 @@ async fn ensure_summary_internal(
     state: &AppState,
     video_id: &str,
     allow_cached_auto_regen: bool,
+    force_regenerate: bool,
 ) -> Result<Summary, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     {
-        if let Some(summary) = db::get_summary(&state.db, video_id)
-            .await
-            .map_err(map_db_err)?
-        {
-            if allow_cached_auto_regen {
-                let auto_regen_attempts = db::get_summary_auto_regen_attempts(&state.db, video_id)
-                    .await
-                    .map_err(map_db_err)?;
-                if should_auto_regenerate_summary(
-                    video.summary_status,
-                    summary.quality_score,
-                    auto_regen_attempts,
-                ) {
-                    db::increment_summary_auto_regen_attempts(&state.db, video_id)
-                        .await
-                        .map_err(map_db_err)?;
-                    tracing::info!(
-                        video_id = %video_id,
-                        score = summary.quality_score.unwrap_or_default(),
-                        attempts_before = auto_regen_attempts,
-                        max_attempts = MAX_SUMMARY_AUTO_REGEN_ATTEMPTS,
-                        "summary auto-regeneration requested"
-                    );
+        if !force_regenerate {
+            if let Some(summary) = db::get_summary(&state.db, video_id)
+                .await
+                .map_err(map_db_err)?
+            {
+                if allow_cached_auto_regen {
+                    let auto_regen_attempts =
+                        db::get_summary_auto_regen_attempts(&state.db, video_id)
+                            .await
+                            .map_err(map_db_err)?;
+                    if should_auto_regenerate_summary(
+                        video.summary_status,
+                        summary.quality_score,
+                        auto_regen_attempts,
+                    ) {
+                        db::increment_summary_auto_regen_attempts(&state.db, video_id)
+                            .await
+                            .map_err(map_db_err)?;
+                        tracing::info!(
+                            video_id = %video_id,
+                            score = summary.quality_score.unwrap_or_default(),
+                            attempts_before = auto_regen_attempts,
+                            max_attempts = MAX_SUMMARY_AUTO_REGEN_ATTEMPTS,
+                            "summary auto-regeneration requested"
+                        );
+                    } else {
+                        let _ = db::update_video_summary_status(
+                            &state.db,
+                            video_id,
+                            ContentStatus::Ready,
+                        )
+                        .await;
+                        tracing::debug!(video_id = %video_id, "summary cache hit");
+                        return Ok(summary);
+                    }
                 } else {
-                    let _ =
-                        db::update_video_summary_status(&state.db, video_id, ContentStatus::Ready)
-                            .await;
-                    tracing::debug!(video_id = %video_id, "summary cache hit");
+                    tracing::debug!(
+                        video_id = %video_id,
+                        summary_status = ?video.summary_status,
+                        "summary cache hit (user read path)"
+                    );
                     return Ok(summary);
                 }
-            } else {
-                tracing::debug!(
-                    video_id = %video_id,
-                    summary_status = ?video.summary_status,
-                    "summary cache hit (user read path)"
-                );
-                return Ok(summary);
             }
+        } else {
+            // Explicit user regenerate: keep the existing summary document until a
+            // replacement is successfully generated and upserted below.
+            db::reset_summary_auto_regen_attempts(&state.db, video_id)
+                .await
+                .map_err(map_db_err)?;
+            tracing::info!(video_id = %video_id, "summary force-regeneration requested");
         }
 
         set_summary_status_and_evict(state, video_id, ContentStatus::Loading).await?;
@@ -725,14 +739,21 @@ pub(crate) async fn ensure_summary(
     state: &AppState,
     video_id: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    ensure_summary_internal(state, video_id, false).await
+    ensure_summary_internal(state, video_id, false, false).await
 }
 
 pub(crate) async fn ensure_summary_for_queue(
     state: &AppState,
     video_id: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    ensure_summary_internal(state, video_id, true).await
+    ensure_summary_internal(state, video_id, true, false).await
+}
+
+pub(crate) async fn ensure_summary_force_regenerate(
+    state: &AppState,
+    video_id: &str,
+) -> Result<Summary, (StatusCode, String)> {
+    ensure_summary_internal(state, video_id, false, true).await
 }
 
 const COMPLETED_LIVE_TRANSCRIPT_GRACE_SECONDS: i64 = 30 * 60;
