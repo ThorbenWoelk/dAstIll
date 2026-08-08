@@ -56,3 +56,64 @@ fn summary_needs_quality_eval_keeps_legacy_tagless_summaries_pending() {
 
     assert!(super::summary_needs_quality_eval(&summary));
 }
+
+#[tokio::test]
+async fn update_summary_quality_skips_when_content_no_longer_matches() {
+    let store = crate::db::Store::for_test().await;
+    let summary = sample_summary("video-stale-quality");
+    super::upsert_summary(&store, &summary)
+        .await
+        .expect("seed summary");
+
+    let applied = super::update_summary_quality(
+        &store,
+        "video-stale-quality",
+        "different content from a prior evaluation",
+        Some(3),
+        Some("stale"),
+        Some("eval-model"),
+        Some(&["Tag".to_string()]),
+    )
+    .await
+    .expect("quality update");
+
+    assert!(!applied);
+    let stored = super::get_summary(&store, "video-stale-quality")
+        .await
+        .expect("read")
+        .expect("present");
+    assert_eq!(stored.content, "summary");
+    assert_eq!(stored.quality_score, None);
+    assert!(!stored.summary_tags_evaluated);
+}
+
+#[tokio::test]
+async fn update_summary_quality_applies_when_content_matches() {
+    let store = crate::db::Store::for_test().await;
+    let summary = sample_summary("video-fresh-quality");
+    super::upsert_summary(&store, &summary)
+        .await
+        .expect("seed summary");
+
+    let applied = super::update_summary_quality(
+        &store,
+        "video-fresh-quality",
+        "summary",
+        Some(8),
+        Some("Solid"),
+        Some("eval-model"),
+        Some(&["Tag".to_string()]),
+    )
+    .await
+    .expect("quality update");
+
+    assert!(applied);
+    let stored = super::get_summary(&store, "video-fresh-quality")
+        .await
+        .expect("read")
+        .expect("present");
+    assert_eq!(stored.quality_score, Some(8));
+    assert_eq!(stored.quality_note.as_deref(), Some("Solid"));
+    assert_eq!(stored.summary_tags, vec!["Tag".to_string()]);
+    assert!(stored.summary_tags_evaluated);
+}

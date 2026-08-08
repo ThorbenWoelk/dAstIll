@@ -32,6 +32,21 @@ pub struct BackfillParams {
     pub until: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Channel refresh/backfill mutate the shared catalog (insert videos; for
+/// podcast/website/OpenAlex also overwrite transcripts and can delete summaries).
+/// Guests may browse seeded channels, but must not trigger those writes.
+fn require_authenticated_channel_mutation(
+    access_context: &AccessContext,
+) -> Result<&str, (StatusCode, String)> {
+    let Some(user_id) = access_context.user_id.as_deref() else {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    };
+    if access_context.auth_state != AuthState::Authenticated {
+        return Err((StatusCode::FORBIDDEN, "Sign-in required".to_string()));
+    }
+    Ok(user_id)
+}
+
 fn build_sync_depth_payload(
     channel: &Channel,
     derived_earliest_ready_date: Option<chrono::DateTime<chrono::Utc>>,
@@ -790,14 +805,17 @@ const REFRESH_BACKFILL_MAX_ROUNDS: usize = 20;
     ),
     responses(
         (status = 200, description = "Refresh result", body = crate::openapi::VideosAddedResponse),
+        (status = 403, description = "Sign-in required", body = String),
         (status = 404, description = "Channel not found", body = String),
         (status = 502, description = "Upstream source fetch failed", body = String)
     )
 )]
 pub async fn refresh_channel_videos(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_channel_mutation(&access_context)?;
     tracing::info!(channel_id = %id, "refresh requested - queueing latest videos");
 
     if let Some(profile) = db::get_source_profile(&state.db, &id)
@@ -885,15 +903,18 @@ pub async fn refresh_channel_videos(
     ),
     responses(
         (status = 200, description = "Backfill result", body = crate::openapi::ChannelBackfillResponse),
+        (status = 403, description = "Sign-in required", body = String),
         (status = 404, description = "Channel not found", body = String),
         (status = 502, description = "Upstream source fetch failed", body = String)
     )
 )]
 pub async fn backfill_channel_videos(
     State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
     Query(params): Query<BackfillParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    require_authenticated_channel_mutation(&access_context)?;
     tracing::info!(channel_id = %id, "backfill requested");
 
     if let Some(profile) = db::get_source_profile(&state.db, &id)

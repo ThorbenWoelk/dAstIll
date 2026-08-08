@@ -159,26 +159,38 @@ pub async fn save_manual_summary(
     Ok(summary)
 }
 
+/// Apply quality metadata only when the stored summary content still matches
+/// `expected_content`. This prevents a stale evaluation from rewriting a summary
+/// that was regenerated or manually replaced while the evaluator was running.
 pub async fn update_summary_quality(
     store: &Store,
     video_id: &str,
+    expected_content: &str,
     quality_score: Option<u8>,
     quality_note: Option<&str>,
     quality_model_used: Option<&str>,
     summary_tags: Option<&[String]>,
-) -> Result<(), StoreError> {
+) -> Result<bool, StoreError> {
     let key = summary_key(video_id);
-    if let Some(mut summary) = store.get_json::<Summary>(&key).await? {
-        apply_summary_quality_update(
-            &mut summary,
-            quality_score,
-            quality_note,
-            quality_model_used,
-            summary_tags,
+    let Some(mut summary) = store.get_json::<Summary>(&key).await? else {
+        return Ok(false);
+    };
+    if summary.content != expected_content {
+        tracing::info!(
+            video_id = %video_id,
+            "skipping stale summary quality update after content changed"
         );
-        store.put_json(&key, &summary).await?;
+        return Ok(false);
     }
-    Ok(())
+    apply_summary_quality_update(
+        &mut summary,
+        quality_score,
+        quality_note,
+        quality_model_used,
+        summary_tags,
+    );
+    store.put_json(&key, &summary).await?;
+    Ok(true)
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
