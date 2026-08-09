@@ -8,6 +8,7 @@ import {
   resolveBackgroundSummaryRefresh,
   resolveSummaryQualityPresentation,
   resolveTranscriptPresentation,
+  shouldApplyCompletedContentMutation,
   shouldRetryReadySummaryLoad,
   stripContentPrefix,
 } from "../src/lib/workspace/content";
@@ -237,6 +238,41 @@ describe("shouldRetryReadySummaryLoad", () => {
         contentText: "Loaded summary",
         loadingContent: false,
         editing: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldApplyCompletedContentMutation", () => {
+  it("applies only when the saved video and mode are still selected", () => {
+    expect(
+      shouldApplyCompletedContentMutation({
+        selectedVideoId: "video-a",
+        targetVideoId: "video-a",
+        contentMode: "transcript",
+        targetMode: "transcript",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects stale saves after the selected video changes", () => {
+    expect(
+      shouldApplyCompletedContentMutation({
+        selectedVideoId: "video-b",
+        targetVideoId: "video-a",
+        contentMode: "transcript",
+        targetMode: "transcript",
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects stale saves after the content mode changes", () => {
+    expect(
+      shouldApplyCompletedContentMutation({
+        selectedVideoId: "video-a",
+        targetVideoId: "video-a",
+        contentMode: "summary",
+        targetMode: "transcript",
       }),
     ).toBe(false);
   });

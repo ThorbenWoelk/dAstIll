@@ -12,6 +12,7 @@ import {
   resolveBackgroundSummaryRefresh,
   resolveTranscriptPresentation,
   resolveSummaryQualityPresentation,
+  shouldApplyCompletedContentMutation,
   stripContentPrefix,
 } from "$lib/workspace/content";
 import { deriveSummaryTrackingId } from "$lib/workspace/summary-tracking-id";
@@ -567,39 +568,65 @@ export function createContentState(options: {
     async saveEdit() {
       const targetVideoId = options.getSelectedVideoId();
       if (!targetVideoId) return;
-      if (contentMode === "info" || contentMode === "highlights") return;
+      const targetMode = contentMode;
+      if (targetMode === "info" || targetMode === "highlights") return;
 
       loadingContent = true;
       try {
-        if (contentMode === "transcript") {
+        if (targetMode === "transcript") {
           const transcript = await updateTranscript(
             targetVideoId,
             draft,
             draftTranscriptRenderMode,
           );
           const presentation = resolveTranscriptPresentation(transcript);
-          contentText = presentation.content;
-          transcriptRenderMode = presentation.renderMode;
-          draftTranscriptRenderMode = presentation.renderMode;
           invalidateContentCache(targetVideoId, "transcript");
-          resetSummaryQuality();
-          videoInfo = null;
+          // Selection/mode can change while the PUT is in flight. Apply the
+          // response only when this save still owns the visible editor; otherwise
+          // a later video would show (and risk re-saving) the previous content.
+          if (
+            shouldApplyCompletedContentMutation({
+              selectedVideoId: options.getSelectedVideoId(),
+              targetVideoId,
+              contentMode,
+              targetMode,
+            })
+          ) {
+            contentText = presentation.content;
+            transcriptRenderMode = presentation.renderMode;
+            draftTranscriptRenderMode = presentation.renderMode;
+            resetSummaryQuality();
+            videoInfo = null;
+            editing = false;
+          }
         } else {
           const summary = await updateSummary(targetVideoId, draft);
-          contentText = stripContentPrefix(
-            summary.content || "Summary unavailable.",
-          );
           invalidateContentCache(targetVideoId, "summary");
-          applySummaryQuality(summary);
-          const channelId = options.getSelectedChannelId();
-          if (channelId && contentMode === "summary") {
-            syncSummaryTrackingSession(summary, targetVideoId, channelId);
+          if (
+            shouldApplyCompletedContentMutation({
+              selectedVideoId: options.getSelectedVideoId(),
+              targetVideoId,
+              contentMode,
+              targetMode,
+            })
+          ) {
+            contentText = stripContentPrefix(
+              summary.content || "Summary unavailable.",
+            );
+            applySummaryQuality(summary);
+            const channelId = options.getSelectedChannelId();
+            if (channelId) {
+              syncSummaryTrackingSession(summary, targetVideoId, channelId);
+            }
+            videoInfo = null;
+            editing = false;
           }
-          videoInfo = null;
         }
-        editing = false;
       } finally {
-        loadingContent = false;
+        // A newer loadContent request owns the spinner once selection/mode changes.
+        if (activeContentRequestId === 0) {
+          loadingContent = false;
+        }
       }
     },
 
