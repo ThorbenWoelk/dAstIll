@@ -117,6 +117,19 @@ export function shouldRetryReadySummaryLoad(params: {
   );
 }
 
+/** True when an in-flight content mutation should update the visible editor. */
+export function shouldApplyCompletedContentMutation(params: {
+  selectedVideoId: string | null | undefined;
+  targetVideoId: string;
+  contentMode: "transcript" | "summary" | "highlights" | "info";
+  targetMode: "transcript" | "summary" | "highlights" | "info";
+}): boolean {
+  return (
+    params.selectedVideoId === params.targetVideoId &&
+    params.contentMode === params.targetMode
+  );
+}
+
 export function hasKnownDuration(
   seconds: number | null | undefined,
   iso8601: string | null | undefined,
