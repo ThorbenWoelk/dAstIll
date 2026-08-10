@@ -15,6 +15,7 @@ import type { MiniReader, MiniSummaryItem } from "$lib/transport-types";
 import { renderMarkdown } from "$lib/utils/markdown";
 import { createHomeWorkspaceHighlightController } from "$lib/workspace/home-workspace-highlight-controller.svelte";
 import { createVocabularyController } from "$lib/workspace/vocabulary-controller.svelte";
+import { saveVocabularyReplacements } from "$lib/workspace/vocabulary-persistence";
 import type { VocabularyReplacement } from "$lib/bindings/VocabularyReplacement";
 
 export const MINI_DEFAULT_SHOW_UNREAD_ONLY = true;
@@ -98,13 +99,11 @@ export function selectMiniSummaryHighlights(
 export async function saveMiniVocabularyPreferences(
   replacements: VocabularyReplacement[],
 ): Promise<UserPreferences> {
-  const current = await getPreferences();
-  const next = {
-    ...current,
-    vocabulary_replacements: replacements,
-  };
-  await savePreferences(next);
-  return next;
+  return saveVocabularyReplacements({
+    getPreferences,
+    savePreferences,
+    replacements,
+  });
 }
 
 export type MiniReaderStatus = "idle" | "loading" | "ready" | "empty" | "error";
@@ -143,6 +142,12 @@ export class MiniReaderState {
     },
     onError: (message) => {
       this.error = message;
+    },
+    ensureReplacementsLoaded: async () => {
+      if (authState.current.authState !== "authenticated") {
+        throw new Error("Sign-in required to save vocabulary.");
+      }
+      await this.loadPreferences();
     },
     onSave: async (replacements) => {
       const next = await saveMiniVocabularyPreferences(replacements);

@@ -6,7 +6,7 @@
  * module has no knowledge of channel order or other preference fields.
  */
 
-import { upsertVocabularyReplacement } from "$lib/workspace/vocabulary";
+import { prepareVocabularyReplacementSave } from "$lib/workspace/vocabulary";
 import type { VocabularyReplacement } from "$lib/bindings/VocabularyReplacement";
 
 export type VocabularyControllerParams = {
@@ -21,10 +21,22 @@ export type VocabularyControllerParams = {
    * so the caller can merge it with other preference fields (channel_order, etc.).
    */
   onSave: (replacements: VocabularyReplacement[]) => Promise<void>;
+  /**
+   * Refresh in-memory replacements from the authenticated server document
+   * before upsert. Without this, Correct can build `[newRule]` from empty
+   * defaults and wipe existing vocabulary via a full-document PUT.
+   */
+  ensureReplacementsLoaded?: () => Promise<void>;
 };
 
 export function createVocabularyController(params: VocabularyControllerParams) {
-  const { getReplacements, setReplacements, onError, onSave } = params;
+  const {
+    getReplacements,
+    setReplacements,
+    onError,
+    onSave,
+    ensureReplacementsLoaded,
+  } = params;
 
   let modalSource = $state<string | null>(null);
   let modalValue = $state("");
@@ -55,22 +67,29 @@ export function createVocabularyController(params: VocabularyControllerParams) {
     const replacement = modalValue.trim();
     if (!source || !replacement) return;
 
-    const current = getReplacements();
-    const next = upsertVocabularyReplacement(current, {
-      from: source,
-      to: replacement,
-      // Transient timestamp for persistence, not reactive state
-      // eslint-disable-next-line svelte/prefer-svelte-reactivity
-      added_at: new Date().toISOString(),
-    });
-
-    // No change - nothing to persist.
-    if (next === current) return;
-
     creating = true;
     onError(null);
 
     try {
+      const { next, changed } = await prepareVocabularyReplacementSave({
+        getReplacements,
+        ensureReplacementsLoaded,
+        candidate: {
+          from: source,
+          to: replacement,
+          // Transient timestamp for persistence, not reactive state
+          // eslint-disable-next-line svelte/prefer-svelte-reactivity
+          added_at: new Date().toISOString(),
+        },
+      });
+
+      // No change - nothing to persist.
+      if (!changed) {
+        modalSource = null;
+        modalValue = "";
+        return;
+      }
+
       setReplacements(next);
       await onSave(next);
       modalSource = null;

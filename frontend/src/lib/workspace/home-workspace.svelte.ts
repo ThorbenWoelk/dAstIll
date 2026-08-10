@@ -4,7 +4,7 @@ import { onMount, tick } from "svelte";
 
 import { authState } from "$lib/auth/state.svelte";
 import { getAuthStorageScopeKey, getScopedStorageKey } from "$lib/auth/storage";
-import { savePreferences } from "$lib/api";
+import { getPreferences, savePreferences } from "$lib/api";
 import { resolveAiIndicatorPresentation } from "$lib/ai/status";
 import { DOCS_URL } from "$lib/config/app";
 import type {
@@ -47,6 +47,7 @@ import { createHomeTourSteps } from "$lib/workspace/home-tour";
 import { createContentState } from "$lib/workspace/content-state.svelte";
 import { DASTILL_SET_WORKSPACE_CONTENT_MODE_EVENT } from "$lib/utils/keyboard-shortcuts";
 import { createVocabularyController } from "$lib/workspace/vocabulary-controller.svelte";
+import { saveVocabularyReplacements } from "$lib/workspace/vocabulary-persistence";
 import { createHomeWorkspaceHighlightController } from "$lib/workspace/home-workspace-highlight-controller.svelte";
 import {
   createHomeWorkspaceDataController,
@@ -178,11 +179,20 @@ export function createHomeWorkspacePage() {
     getReplacements: () => pageState.vocabularyReplacements,
     setReplacements: pageState.setVocabularyReplacements,
     onError: pageState.setErrorMessage,
+    ensureReplacementsLoaded: async () => {
+      if (authState.current.authState !== "authenticated") {
+        throw new Error("Sign-in required to save vocabulary.");
+      }
+      const preferences = await getPreferences();
+      pageState.setVocabularyReplacements(
+        preferences.vocabulary_replacements ?? [],
+      );
+    },
     onSave: async (replacements) => {
-      await savePreferences({
-        channel_order: sidebarState.channelOrder,
-        channel_sort_mode: sidebarState.channelSortMode,
-        vocabulary_replacements: replacements,
+      await saveVocabularyReplacements({
+        getPreferences,
+        savePreferences,
+        replacements,
       });
     },
   });
