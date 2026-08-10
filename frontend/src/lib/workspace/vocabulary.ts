@@ -35,6 +35,32 @@ export function upsertVocabularyReplacement(
   );
 }
 
+/**
+ * Refresh replacements from the server (when provided), then upsert the
+ * candidate. Used by Correct so empty pre-hydration defaults cannot become
+ * the sole persisted vocabulary list.
+ */
+export async function prepareVocabularyReplacementSave(options: {
+  getReplacements: () => VocabularyReplacement[];
+  candidate: VocabularyReplacement;
+  ensureReplacementsLoaded?: () => Promise<void>;
+}): Promise<{
+  current: VocabularyReplacement[];
+  next: VocabularyReplacement[];
+  changed: boolean;
+}> {
+  if (options.ensureReplacementsLoaded) {
+    await options.ensureReplacementsLoaded();
+  }
+  const current = options.getReplacements();
+  const next = upsertVocabularyReplacement(current, options.candidate);
+  return {
+    current,
+    next,
+    changed: next !== current,
+  };
+}
+
 export function formatVocabularyAddedAt(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {

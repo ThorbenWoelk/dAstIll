@@ -1,8 +1,8 @@
 import { describe, expect, it, mock } from "bun:test";
 
 import type { UserPreferences, VocabularyReplacement } from "../src/lib/types";
+import { prepareVocabularyReplacementSave } from "../src/lib/workspace/vocabulary";
 import { saveVocabularyReplacements } from "../src/lib/workspace/vocabulary-persistence";
-import { createVocabularyController } from "../src/lib/workspace/vocabulary-controller.svelte";
 
 function prefs(
   vocabulary: VocabularyReplacement[],
@@ -49,18 +49,15 @@ describe("saveVocabularyReplacements", () => {
       replacements: nextVocabulary,
     });
 
-    expect(saved).toEqual([
-      prefs(nextVocabulary, ["channel-a", "channel-b"]),
-    ]);
+    expect(saved).toEqual([prefs(nextVocabulary, ["channel-a", "channel-b"])]);
     expect(result.channel_order).toEqual(["channel-a", "channel-b"]);
     expect(result.vocabulary_replacements).toEqual(nextVocabulary);
   });
 });
 
-describe("createVocabularyController confirm hydration", () => {
+describe("prepareVocabularyReplacementSave", () => {
   it("loads server replacements before upsert so Correct cannot wipe existing rules", async () => {
     let replacements: VocabularyReplacement[] = [];
-    const saved: VocabularyReplacement[][] = [];
     const ensureReplacementsLoaded = mock(async () => {
       replacements = [
         {
@@ -76,58 +73,41 @@ describe("createVocabularyController confirm hydration", () => {
       ];
     });
 
-    const controller = createVocabularyController({
+    const prepared = await prepareVocabularyReplacementSave({
       getReplacements: () => replacements,
-      setReplacements: (next) => {
-        replacements = next;
-      },
-      onError: () => {},
       ensureReplacementsLoaded,
-      onSave: async (next) => {
-        saved.push(next);
+      candidate: {
+        from: "dAstIl",
+        to: "dAstIll",
+        added_at: "2026-08-10T12:00:00.000Z",
       },
     });
 
-    controller.open("dAstIl");
-    controller.setModalValue("dAstIll");
-    await controller.confirm();
-
     expect(ensureReplacementsLoaded).toHaveBeenCalledTimes(1);
-    expect(saved).toHaveLength(1);
-    expect(saved[0]?.map((entry) => entry.from)).toEqual([
+    expect(prepared.changed).toBe(true);
+    expect(prepared.next.map((entry) => entry.from)).toEqual([
       "Open A I",
       "San Franciso",
       "dAstIl",
     ]);
   });
 
-  it("surfaces ensureReplacementsLoaded failures without writing preferences", async () => {
-    let replacements: VocabularyReplacement[] = [];
-    const saved: VocabularyReplacement[][] = [];
-    let errorMessage: string | null = null;
+  it("propagates ensureReplacementsLoaded failures before building a save payload", async () => {
+    const replacements: VocabularyReplacement[] = [];
 
-    const controller = createVocabularyController({
-      getReplacements: () => replacements,
-      setReplacements: (next) => {
-        replacements = next;
-      },
-      onError: (message) => {
-        errorMessage = message;
-      },
-      ensureReplacementsLoaded: async () => {
-        throw new Error("Sign-in required to save vocabulary.");
-      },
-      onSave: async (next) => {
-        saved.push(next);
-      },
-    });
-
-    controller.open("Open A I");
-    controller.setModalValue("OpenAI");
-    await controller.confirm();
-
-    expect(saved).toEqual([]);
+    await expect(
+      prepareVocabularyReplacementSave({
+        getReplacements: () => replacements,
+        ensureReplacementsLoaded: async () => {
+          throw new Error("Sign-in required to save vocabulary.");
+        },
+        candidate: {
+          from: "Open A I",
+          to: "OpenAI",
+          added_at: "2026-08-10T12:00:00.000Z",
+        },
+      }),
+    ).rejects.toThrow("Sign-in required to save vocabulary.");
     expect(replacements).toEqual([]);
-    expect(errorMessage).toBe("Sign-in required to save vocabulary.");
   });
 });

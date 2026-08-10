@@ -6,7 +6,7 @@
  * module has no knowledge of channel order or other preference fields.
  */
 
-import { upsertVocabularyReplacement } from "$lib/workspace/vocabulary";
+import { prepareVocabularyReplacementSave } from "$lib/workspace/vocabulary";
 import type { VocabularyReplacement } from "$lib/bindings/VocabularyReplacement";
 
 export type VocabularyControllerParams = {
@@ -71,21 +71,20 @@ export function createVocabularyController(params: VocabularyControllerParams) {
     onError(null);
 
     try {
-      if (ensureReplacementsLoaded) {
-        await ensureReplacementsLoaded();
-      }
-
-      const current = getReplacements();
-      const next = upsertVocabularyReplacement(current, {
-        from: source,
-        to: replacement,
-        // Transient timestamp for persistence, not reactive state
-        // eslint-disable-next-line svelte/prefer-svelte-reactivity
-        added_at: new Date().toISOString(),
+      const { next, changed } = await prepareVocabularyReplacementSave({
+        getReplacements,
+        ensureReplacementsLoaded,
+        candidate: {
+          from: source,
+          to: replacement,
+          // Transient timestamp for persistence, not reactive state
+          // eslint-disable-next-line svelte/prefer-svelte-reactivity
+          added_at: new Date().toISOString(),
+        },
       });
 
       // No change - nothing to persist.
-      if (next === current) {
+      if (!changed) {
         modalSource = null;
         modalValue = "";
         return;
