@@ -10,8 +10,45 @@ use crate::models::{
 use super::build_http_client;
 use super::providers::ProviderAdapterError;
 
+/// Hard cap on HTML fetched during website subscribe/resolve.
+///
+/// Subscribe accepts attacker-controlled URLs. Buffering unbounded `.text()`
+/// responses lets a single authenticated request OOM the Cloud Run instance.
+pub(crate) const MAX_WEBSITE_HTML_BYTES: u64 = 5 * 1024 * 1024;
+
 fn first_chars(value: &str, limit: usize) -> String {
     value.chars().take(limit).collect::<String>()
+}
+
+pub(crate) async fn read_response_text_limited(
+    response: reqwest::Response,
+    max_bytes: u64,
+) -> Result<String, ProviderAdapterError> {
+    if let Some(length) = response.content_length() {
+        if length > max_bytes {
+            return Err(ProviderAdapterError::Upstream(format!(
+                "website response is too large: {length} bytes"
+            )));
+        }
+    }
+
+    let mut body = Vec::new();
+    let mut response = response;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
+    {
+        let next_len = body.len().saturating_add(chunk.len());
+        if next_len as u64 > max_bytes {
+            return Err(ProviderAdapterError::Upstream(format!(
+                "website response is too large: more than {max_bytes} bytes"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
 fn slugify_url(value: &str) -> String {
@@ -97,17 +134,15 @@ impl WebsiteService {
     ) -> Result<WebsitePageMaterial, ProviderAdapterError> {
         let parsed = reqwest::Url::parse(url.trim())
             .map_err(|error| ProviderAdapterError::InvalidInput(error.to_string()))?;
-        let html = self
+        let response = self
             .client
             .get(parsed.clone())
             .send()
             .await
             .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
             .error_for_status()
-            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
-            .text()
-            .await
             .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
+        let html = read_response_text_limited(response, MAX_WEBSITE_HTML_BYTES).await?;
 
         let document = Html::parse_document(&html);
         let title = extract_title(&document).unwrap_or_else(|| parsed.as_str().to_string());
