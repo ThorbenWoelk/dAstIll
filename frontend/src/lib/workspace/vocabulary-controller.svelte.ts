@@ -45,6 +45,12 @@ export function createVocabularyController(params: VocabularyControllerParams) {
     modalValue = "";
   }
 
+  function resetForAuthScopeChange() {
+    modalSource = null;
+    modalValue = "";
+    creating = false;
+  }
+
   function setModalValue(value: string) {
     modalValue = value;
   }
@@ -100,6 +106,7 @@ export function createVocabularyController(params: VocabularyControllerParams) {
     },
     open,
     close,
+    resetForAuthScopeChange,
     setModalValue,
     confirm,
   };

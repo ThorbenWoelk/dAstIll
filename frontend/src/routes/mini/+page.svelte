@@ -9,6 +9,11 @@
   import MiniTopBar from "$lib/components/mini/MiniTopBar.svelte";
   import ErrorToast from "$lib/components/ErrorToast.svelte";
   import VocabularyReplacementModal from "$lib/components/VocabularyReplacementModal.svelte";
+  import { getAuthStorageScopeKey } from "$lib/auth/storage";
+  import {
+    shouldRedirectMiniToLogin,
+    shouldReloadMiniForAuthScope,
+  } from "$lib/mini/mini-auth-scope";
   import { createMiniKeydownHandler } from "$lib/mini/mini-keyboard";
   import { createMiniReaderState } from "$lib/mini/mini-reader-state.svelte";
   import { createMiniScrollController } from "$lib/mini/mini-scroll.svelte";
@@ -18,8 +23,10 @@
   const mini = createMiniReaderState();
   const scroll = createMiniScrollController(mini);
   let channelSheetOpen = $state(false);
-  let authResolved = $state(false);
+  let loadedAuthScopeKey = $state<string | null>(null);
+  let loadingAuthScopeKey = $state<string | null>(null);
   let scrollContainer = $state<HTMLElement | null>(null);
+  const authScopeKey = $derived(getAuthStorageScopeKey(authState.current));
 
   $effect(() => {
     scroll.bind(scrollContainer);
@@ -75,15 +82,67 @@
     mini.hydrateActiveSummaryHighlights();
   });
 
+  function reloadMiniForAuthScope(nextAuthScopeKey: string) {
+    loadingAuthScopeKey = nextAuthScopeKey;
+    if (
+      loadedAuthScopeKey !== null ||
+      mini.reader !== null ||
+      mini.preferencesLoaded
+    ) {
+      mini.resetForAuthScopeChange();
+    }
+    void (async () => {
+      try {
+        await Promise.all([
+          mini.loadPreferences(),
+          mini.loadReader(undefined, undefined, { bypassCache: true }),
+        ]);
+        if (getAuthStorageScopeKey(authState.current) !== nextAuthScopeKey) {
+          return;
+        }
+        loadedAuthScopeKey = nextAuthScopeKey;
+      } finally {
+        if (loadingAuthScopeKey === nextAuthScopeKey) {
+          loadingAuthScopeKey = null;
+        }
+      }
+    })();
+  }
+
   $effect(() => {
-    if (!authState.ready || authResolved) return;
-    authResolved = true;
-    if (authState.current.authState !== "authenticated") {
+    if (!authState.ready) return;
+
+    if (shouldRedirectMiniToLogin(authState.current.authState)) {
+      if (
+        loadedAuthScopeKey !== null ||
+        loadingAuthScopeKey !== null ||
+        mini.reader !== null ||
+        mini.preferencesLoaded
+      ) {
+        mini.resetForAuthScopeChange();
+      }
+      if (loadedAuthScopeKey !== null) {
+        loadedAuthScopeKey = null;
+      }
+      if (loadingAuthScopeKey !== null) {
+        loadingAuthScopeKey = null;
+      }
       void goto("/login?redirectTo=%2Fmini");
       return;
     }
-    void mini.loadPreferences();
-    void mini.loadReader();
+
+    if (
+      !shouldReloadMiniForAuthScope({
+        authReady: authState.ready,
+        loadedAuthScopeKey,
+        loadingAuthScopeKey,
+        authScopeKey,
+      })
+    ) {
+      return;
+    }
+
+    reloadMiniForAuthScope(authScopeKey);
   });
 </script>
 

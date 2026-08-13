@@ -5,6 +5,7 @@ import {
   updateMiniReadStatus,
 } from "$lib/api";
 import { authState } from "$lib/auth/state.svelte";
+import { resetMiniReaderForAuthScopeChange } from "$lib/mini/mini-auth-scope";
 import type {
   Channel,
   CreateHighlightRequest,
@@ -123,6 +124,7 @@ export class MiniReaderState {
   preferences = $state<UserPreferences>(defaultUserPreferences());
   preferencesLoaded = $state(false);
   private preferencesLoadPromise: Promise<UserPreferences> | null = null;
+  private loadGeneration = 0;
   highlightController = createHomeWorkspaceHighlightController({
     getSelectedVideoId: () => this.activeSummary?.video_id ?? null,
     getSelectedChannelId: () =>
@@ -145,7 +147,11 @@ export class MiniReaderState {
       this.error = message;
     },
     onSave: async (replacements) => {
+      const generation = this.loadGeneration;
       const next = await saveMiniVocabularyPreferences(replacements);
+      if (generation !== this.loadGeneration) {
+        return;
+      }
       this.preferences = next;
       this.preferencesLoaded = true;
     },
@@ -205,11 +211,40 @@ export class MiniReaderState {
         : "no-summaries",
   );
 
+  resetForAuthScopeChange() {
+    this.loadGeneration += 1;
+    resetMiniReaderForAuthScopeChange({
+      clearReaderState: () => {
+        this.reader = null;
+        this.status = "loading";
+        this.errorMessage = null;
+        this.error = null;
+        this.selectedChannelId = null;
+        this.activeVideoId = null;
+        this.markingRead = false;
+        this.contentKey += 1;
+        this.readProgress = 0;
+      },
+      clearPreferences: () => {
+        this.preferences = defaultUserPreferences();
+        this.preferencesLoaded = false;
+        this.preferencesLoadPromise = null;
+      },
+      resetHighlights: () => {
+        this.highlightController.resetForAuthScopeChange();
+      },
+      resetVocabulary: () => {
+        this.vocabularyController.resetForAuthScopeChange();
+      },
+    });
+  }
+
   async loadReader(
     channelId?: string | null,
     preferredVideoId?: string | null,
     options?: { bypassCache?: boolean },
   ) {
+    const generation = this.loadGeneration;
     const hadReader = this.reader !== null;
     this.status = "loading";
     this.errorMessage = null;
@@ -217,10 +252,17 @@ export class MiniReaderState {
       const next = await getMiniReader(channelId, {
         bypassCache: options?.bypassCache,
       });
+      if (generation !== this.loadGeneration) {
+        return;
+      }
       const reader = await this.advancePastCaughtUpChannel(
         next,
         options?.bypassCache,
+        generation,
       );
+      if (generation !== this.loadGeneration) {
+        return;
+      }
       this.reader = reader;
       this.selectedChannelId = reader.selected_channel_id ?? null;
       this.activeVideoId = chooseActiveVideoId(
@@ -236,6 +278,9 @@ export class MiniReaderState {
           ? "empty"
           : "ready";
     } catch (cause) {
+      if (generation !== this.loadGeneration) {
+        return;
+      }
       const message =
         cause instanceof Error ? cause.message : "Could not load dastill-mini.";
       if (hadReader) {
@@ -252,19 +297,26 @@ export class MiniReaderState {
   }
 
   async loadPreferences(): Promise<UserPreferences> {
+    const generation = this.loadGeneration;
     if (this.preferencesLoaded) {
       return this.preferences;
     }
     if (!this.preferencesLoadPromise) {
-      this.preferencesLoadPromise = getPreferences()
+      const loadPromise = getPreferences()
         .then((preferences) => {
+          if (generation !== this.loadGeneration) {
+            return this.preferences;
+          }
           this.preferences = preferences;
           this.preferencesLoaded = true;
           return preferences;
         })
         .finally(() => {
-          this.preferencesLoadPromise = null;
+          if (this.preferencesLoadPromise === loadPromise) {
+            this.preferencesLoadPromise = null;
+          }
         });
+      this.preferencesLoadPromise = loadPromise;
     }
     return this.preferencesLoadPromise;
   }
@@ -283,6 +335,7 @@ export class MiniReaderState {
   private async advancePastCaughtUpChannel(
     initialReader: MiniReader,
     bypassCache?: boolean,
+    generation?: number,
   ): Promise<MiniReader> {
     if (
       !this.showUnreadOnly ||
@@ -294,6 +347,9 @@ export class MiniReaderState {
     let reader = initialReader;
     const visitedChannelIds: string[] = [];
     while (reader.selected_channel_id) {
+      if (generation !== undefined && generation !== this.loadGeneration) {
+        return initialReader;
+      }
       visitedChannelIds.push(reader.selected_channel_id);
       const nextChannelId = findNextMiniChannelId(
         reader.channels,
@@ -304,6 +360,9 @@ export class MiniReaderState {
       }
 
       const nextReader = await getMiniReader(nextChannelId, { bypassCache });
+      if (generation !== undefined && generation !== this.loadGeneration) {
+        return initialReader;
+      }
       if (!miniChannelIsCaughtUp(nextReader.summaries)) {
         return nextReader;
       }
@@ -354,10 +413,11 @@ export class MiniReaderState {
     if (!this.activeSummary || this.markingRead) return;
     this.markingRead = true;
     this.error = null;
+    const generation = this.loadGeneration;
+    const markedId = this.activeSummary.video_id;
     try {
-      await updateMiniReadStatus(this.activeSummary.video_id, true);
-      if (!this.reader) return;
-      const markedId = this.activeSummary.video_id;
+      await updateMiniReadStatus(markedId, true);
+      if (generation !== this.loadGeneration || !this.reader) return;
       this.reader = {
         ...this.reader,
         summaries: this.reader.summaries.map((s) =>
@@ -378,12 +438,15 @@ export class MiniReaderState {
       this.contentKey += 1;
       this.readProgress = 0;
     } catch (cause) {
+      if (generation !== this.loadGeneration) return;
       this.error =
         cause instanceof Error
           ? cause.message
           : "Could not update read status.";
     } finally {
-      this.markingRead = false;
+      if (generation === this.loadGeneration) {
+        this.markingRead = false;
+      }
     }
   }
 
@@ -391,10 +454,11 @@ export class MiniReaderState {
     if (!this.activeSummary || this.markingRead) return;
     this.markingRead = true;
     this.error = null;
+    const generation = this.loadGeneration;
+    const markedId = this.activeSummary.video_id;
     try {
-      const markedId = this.activeSummary.video_id;
       await updateMiniReadStatus(markedId, true);
-      if (!this.reader) return;
+      if (generation !== this.loadGeneration || !this.reader) return;
 
       const summaries = this.reader.summaries.map((s) =>
         s.video_id === markedId ? { ...s, read: true } : s,
@@ -413,12 +477,15 @@ export class MiniReaderState {
       this.contentKey += 1;
       this.readProgress = 0;
     } catch (cause) {
+      if (generation !== this.loadGeneration) return;
       this.error =
         cause instanceof Error
           ? cause.message
           : "Could not update read status.";
     } finally {
-      this.markingRead = false;
+      if (generation === this.loadGeneration) {
+        this.markingRead = false;
+      }
     }
   }
 
