@@ -35,6 +35,7 @@ export function createHomeWorkspaceHighlightController(options: {
   let creatingHighlight = $state(false);
   let creatingHighlightVideoId = $state<string | null>(null);
   let deletingHighlightId = $state<number | null>(null);
+  let mutationGeneration = 0;
 
   function storeVideoHighlights(videoId: string, highlights: Highlight[]) {
     videoHighlightsByVideoId = {
@@ -63,6 +64,14 @@ export function createHomeWorkspaceHighlightController(options: {
     );
   }
 
+  function resetForAuthScopeChange() {
+    mutationGeneration += 1;
+    videoHighlightsByVideoId = {};
+    creatingHighlight = false;
+    creatingHighlightVideoId = null;
+    deletingHighlightId = null;
+  }
+
   function persistSessionHighlightsIfNeeded() {
     if (!shouldUseSessionHighlights(authState.current)) return;
     const scope = resolveHighlightsScopeKey(authState.current);
@@ -78,18 +87,22 @@ export function createHomeWorkspaceHighlightController(options: {
     videoId: string,
     opts: { showError?: boolean } = {},
   ): Promise<Highlight[] | null> {
+    const generation = mutationGeneration;
     if (shouldUseSessionHighlights(authState.current)) {
       const scope = resolveHighlightsScopeKey(authState.current);
       const map = loadSessionHighlightsMap(scope);
       const highlights = map[videoId] ?? [];
+      if (generation !== mutationGeneration) return null;
       storeVideoHighlights(videoId, highlights);
       return highlights;
     }
     try {
       const highlights = await getVideoHighlights(videoId);
+      if (generation !== mutationGeneration) return null;
       storeVideoHighlights(videoId, highlights);
       return highlights;
     } catch (error) {
+      if (generation !== mutationGeneration) return null;
       if (opts.showError && !presentAuthRequiredNoticeIfNeeded(error)) {
         options.onError((error as Error).message);
       }
@@ -108,6 +121,7 @@ export function createHomeWorkspaceHighlightController(options: {
       return;
     }
 
+    const generation = mutationGeneration;
     const targetVideoId = selectedVideoId;
     const optimisticHighlight = buildOptimisticHighlight(
       targetVideoId,
@@ -149,6 +163,7 @@ export function createHomeWorkspaceHighlightController(options: {
 
     try {
       const highlight = await createHighlight(targetVideoId, payload);
+      if (generation !== mutationGeneration) return;
       storeVideoHighlights(
         targetVideoId,
         reconcileOptimisticHighlight(
@@ -167,13 +182,16 @@ export function createHomeWorkspaceHighlightController(options: {
         });
       }
     } catch (error) {
+      if (generation !== mutationGeneration) return;
       removeVideoHighlight(targetVideoId, optimisticHighlight.id);
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         options.onError((error as Error).message);
       }
     } finally {
-      creatingHighlight = false;
-      creatingHighlightVideoId = null;
+      if (generation === mutationGeneration) {
+        creatingHighlight = false;
+        creatingHighlightVideoId = null;
+      }
     }
   }
 
@@ -190,13 +208,16 @@ export function createHomeWorkspaceHighlightController(options: {
     }
     deletingHighlightId = highlightId;
     options.onError(null);
+    const generation = mutationGeneration;
 
     if (shouldUseSessionHighlights(authState.current)) {
       try {
         removeVideoHighlight(targetVideoId, highlightId);
         persistSessionHighlightsIfNeeded();
       } finally {
-        deletingHighlightId = null;
+        if (generation === mutationGeneration) {
+          deletingHighlightId = null;
+        }
       }
       return;
     }
@@ -209,13 +230,17 @@ export function createHomeWorkspaceHighlightController(options: {
     try {
       const { deleteHighlight } = await import("$lib/api");
       await deleteHighlight(highlightId);
+      if (generation !== mutationGeneration) return;
       removeVideoHighlight(targetVideoId, highlightId);
     } catch (error) {
+      if (generation !== mutationGeneration) return;
       if (!presentAuthRequiredNoticeIfNeeded(error)) {
         options.onError((error as Error).message);
       }
     } finally {
-      deletingHighlightId = null;
+      if (generation === mutationGeneration) {
+        deletingHighlightId = null;
+      }
     }
   }
 
@@ -236,5 +261,6 @@ export function createHomeWorkspaceHighlightController(options: {
     hydrateVideoHighlights,
     saveSelectionHighlight,
     deleteExistingHighlight,
+    resetForAuthScopeChange,
   };
 }
