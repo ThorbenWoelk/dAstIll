@@ -62,11 +62,41 @@ fn next_queue_task_skips_complete_rows() {
 
 #[test]
 fn should_queue_summary_auto_regeneration_only_for_low_scores_with_remaining_attempts() {
-    assert!(should_queue_summary_auto_regeneration(6, 0));
-    assert!(should_queue_summary_auto_regeneration(0, 1));
-    assert!(!should_queue_summary_auto_regeneration(7, 0));
-    assert!(!should_queue_summary_auto_regeneration(9, 0));
-    assert!(!should_queue_summary_auto_regeneration(6, 2));
+    assert!(should_queue_summary_auto_regeneration(
+        6,
+        0,
+        Some("glm-5.1:cloud")
+    ));
+    assert!(should_queue_summary_auto_regeneration(0, 1, None));
+    assert!(!should_queue_summary_auto_regeneration(
+        7,
+        0,
+        Some("glm-5.1:cloud")
+    ));
+    assert!(!should_queue_summary_auto_regeneration(
+        9,
+        0,
+        Some("glm-5.1:cloud")
+    ));
+    assert!(!should_queue_summary_auto_regeneration(
+        6,
+        2,
+        Some("glm-5.1:cloud")
+    ));
+}
+
+#[test]
+fn should_queue_summary_auto_regeneration_skips_user_saved_manual_summaries() {
+    assert!(!should_queue_summary_auto_regeneration(
+        1,
+        0,
+        Some("manual")
+    ));
+    assert!(!should_queue_summary_auto_regeneration(
+        0,
+        1,
+        Some("Manual")
+    ));
 }
 
 #[test]

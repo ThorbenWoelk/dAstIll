@@ -665,6 +665,7 @@ pub struct SummaryEvaluationJob {
     pub video_title: String,
     pub transcript_text: String,
     pub summary_content: String,
+    pub model_used: Option<String>,
 }
 
 #[derive(Debug, Clone, TS, ToSchema)]

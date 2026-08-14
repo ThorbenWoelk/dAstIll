@@ -15,8 +15,10 @@ use super::{
 pub(super) fn should_queue_summary_auto_regeneration(
     quality_score: u8,
     auto_regen_attempts: u8,
+    model_used: Option<&str>,
 ) -> bool {
-    quality_score < content::MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE
+    !content::is_manual_summary_model(model_used)
+        && quality_score < content::MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE
         && auto_regen_attempts < content::MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
 }
 
@@ -160,6 +162,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                                     if should_queue_summary_auto_regeneration(
                                         score,
                                         auto_regen_attempts,
+                                        job.model_used.as_deref(),
                                     ) {
                                         if let Err(err) = db::update_video_summary_status(
                                             &conn,

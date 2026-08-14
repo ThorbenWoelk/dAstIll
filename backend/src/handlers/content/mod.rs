@@ -29,6 +29,11 @@ pub(crate) use generation::{ensure_summary, ensure_summary_for_queue, ensure_tra
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
+pub(crate) const MANUAL_SUMMARY_MODEL: &str = "manual";
+
+pub(crate) fn is_manual_summary_model(model_used: Option<&str>) -> bool {
+    model_used.is_some_and(|model| model.eq_ignore_ascii_case(MANUAL_SUMMARY_MODEL))
+}
 
 fn map_fts_err(err: String) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, err)
@@ -61,13 +66,16 @@ pub(crate) fn should_auto_regenerate_summary(
     summary_status: ContentStatus,
     quality_score: Option<u8>,
     auto_regen_attempts: u8,
+    model_used: Option<&str>,
 ) -> bool {
-    matches!(
-        summary_status,
-        ContentStatus::Pending | ContentStatus::Loading
-    ) && quality_score
-        .map(|score| score < MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE)
-        .unwrap_or(false)
+    !is_manual_summary_model(model_used)
+        && matches!(
+            summary_status,
+            ContentStatus::Pending | ContentStatus::Loading
+        )
+        && quality_score
+            .map(|score| score < MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE)
+            .unwrap_or(false)
         && auto_regen_attempts < MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
 }
 
