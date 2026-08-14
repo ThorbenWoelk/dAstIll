@@ -283,6 +283,7 @@ pub async fn list_summaries_pending_quality_eval(
             video_title: video.title,
             transcript_text: transcript_text.trim().to_string(),
             summary_content: summary.content,
+            model_used: summary.model_used,
         });
 
         if results.len() >= limit {

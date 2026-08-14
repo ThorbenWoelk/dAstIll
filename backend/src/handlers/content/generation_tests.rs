@@ -1,8 +1,8 @@
 use super::{
     MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, completed_live_transcript_grace_elapsed,
-    completed_live_transcript_looks_like_description, is_valid_cached_transcript,
-    should_auto_regenerate_summary, summarizer_error_statuses, summarizer_pending_message,
-    transcript_text,
+    completed_live_transcript_looks_like_description, is_manual_summary_model,
+    is_valid_cached_transcript, should_auto_regenerate_summary, summarizer_error_statuses,
+    summarizer_pending_message, transcript_text,
 };
 use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
 use crate::services::summarizer::SummarizerError;
@@ -161,31 +161,60 @@ fn completed_live_transcript_accepts_timed_segments_even_when_short() {
 }
 
 #[test]
+fn is_manual_summary_model_matches_saved_edit_marker() {
+    assert!(is_manual_summary_model(Some("manual")));
+    assert!(is_manual_summary_model(Some("Manual")));
+    assert!(!is_manual_summary_model(Some("glm-5.1:cloud")));
+    assert!(!is_manual_summary_model(None));
+}
+
+#[test]
 fn should_auto_regenerate_summary_requires_pending_or_loading_and_low_score() {
     assert!(should_auto_regenerate_summary(
         ContentStatus::Pending,
         Some(6),
-        0
+        0,
+        Some("glm-5.1:cloud")
     ));
     assert!(should_auto_regenerate_summary(
         ContentStatus::Loading,
         Some(0),
-        1
+        1,
+        None
     ));
     assert!(!should_auto_regenerate_summary(
         ContentStatus::Ready,
         Some(2),
-        0
+        0,
+        Some("glm-5.1:cloud")
     ));
     assert!(!should_auto_regenerate_summary(
         ContentStatus::Pending,
         Some(7),
-        0
+        0,
+        Some("glm-5.1:cloud")
     ));
     assert!(!should_auto_regenerate_summary(
         ContentStatus::Pending,
         None,
-        0
+        0,
+        Some("glm-5.1:cloud")
+    ));
+}
+
+#[test]
+fn should_auto_regenerate_summary_skips_user_saved_manual_summaries() {
+    assert!(!should_auto_regenerate_summary(
+        ContentStatus::Pending,
+        Some(1),
+        0,
+        Some("manual")
+    ));
+    assert!(!should_auto_regenerate_summary(
+        ContentStatus::Loading,
+        Some(0),
+        1,
+        Some("Manual")
     ));
 }
 
@@ -194,7 +223,8 @@ fn should_auto_regenerate_summary_respects_max_attempts() {
     assert!(!should_auto_regenerate_summary(
         ContentStatus::Pending,
         Some(1),
-        MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
+        MAX_SUMMARY_AUTO_REGEN_ATTEMPTS,
+        Some("glm-5.1:cloud")
     ));
 }
 

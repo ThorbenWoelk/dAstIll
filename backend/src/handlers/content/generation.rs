@@ -212,7 +212,7 @@ async fn save_manual_summary_content(
     content: &str,
 ) -> Result<Summary, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
-    let summary = db::save_manual_summary(&state.db, video_id, content, Some("manual"))
+    let summary = db::save_manual_summary(&state.db, video_id, content, Some(MANUAL_SUMMARY_MODEL))
         .await
         .map_err(map_db_err)?;
     sync_search_source(
@@ -590,6 +590,7 @@ async fn ensure_summary_internal(
                     video.summary_status,
                     summary.quality_score,
                     auto_regen_attempts,
+                    summary.model_used.as_deref(),
                 ) {
                     db::increment_summary_auto_regen_attempts(&state.db, video_id)
                         .await
@@ -689,6 +690,19 @@ async fn ensure_summary_internal(
         }
     };
     tracing::info!(video_id = %video_id, "summary generation completed");
+
+    if let Some(existing) = db::get_summary(&state.db, video_id)
+        .await
+        .map_err(map_db_err)?
+        && is_manual_summary_model(existing.model_used.as_deref())
+    {
+        set_summary_status_and_evict(state, video_id, ContentStatus::Ready).await?;
+        tracing::info!(
+            video_id = %video_id,
+            "keeping user-saved summary instead of generated replacement"
+        );
+        return Ok(existing);
+    }
 
     let summary = Summary {
         video_id: video_id.to_string(),
