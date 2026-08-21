@@ -357,7 +357,7 @@
           minimal={minimalActionChrome}
           icon="edit"
           goHintKey="["
-          disabled={busy}
+          disabled={busy || formatting || reverting}
           label="Edit distillation"
           tooltip="Edit distillation"
           onClick={onEdit}

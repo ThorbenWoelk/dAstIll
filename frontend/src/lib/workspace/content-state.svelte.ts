@@ -22,8 +22,11 @@ import {
 } from "$lib/analytics/read-time";
 import {
   buildFormattingAttemptSummary,
+  bumpTranscriptRevision,
   clearFormattingFeedbackState,
+  currentTranscriptRevision,
   resetSummaryQualityState,
+  shouldPersistBackgroundTranscriptWrite,
 } from "$lib/workspace/formatting";
 import type {
   Transcript,
@@ -93,6 +96,7 @@ export function createContentState(options: {
   let formattingAttemptsVideoId = $state<string | null>(null);
 
   const originalTranscriptByVideoId = $state<Record<string, string>>({});
+  const transcriptRevisionByVideoId: Record<string, number> = {};
   const contentCache = new SvelteMap<string, ContentCacheEntry>();
 
   let contentRequestSeq = 0;
@@ -572,6 +576,7 @@ export function createContentState(options: {
       loadingContent = true;
       try {
         if (contentMode === "transcript") {
+          bumpTranscriptRevision(transcriptRevisionByVideoId, targetVideoId);
           const transcript = await updateTranscript(
             targetVideoId,
             draft,
@@ -650,6 +655,7 @@ export function createContentState(options: {
       resettingVideo = true;
       resettingVideoId = targetVideoId;
 
+      bumpTranscriptRevision(transcriptRevisionByVideoId, targetVideoId);
       options.setVideoStatus(targetVideoId, "pending", "pending");
       invalidateContentCache(targetVideoId, "transcript");
       invalidateContentCache(targetVideoId, "summary");
@@ -670,6 +676,10 @@ export function createContentState(options: {
       if (!targetVideoId || contentMode !== "transcript") return;
       const startedInEditMode = editing;
       const source = startedInEditMode ? draft : contentText;
+      const startedRevision = currentTranscriptRevision(
+        transcriptRevisionByVideoId,
+        targetVideoId,
+      );
       const requestId = ++formattingRequestSeq;
 
       activeFormattingRequest = requestId;
@@ -706,7 +716,15 @@ export function createContentState(options: {
               : `Formatting applied to draft. Save to persist. ${attemptsSummary}`;
           formattingNoticeVideoId = targetVideoId;
         } else {
-          if (result.content !== source) {
+          const persist = shouldPersistBackgroundTranscriptWrite({
+            resultDiffersFromSource: result.content !== source,
+            capturedRevision: startedRevision,
+            currentRevision: currentTranscriptRevision(
+              transcriptRevisionByVideoId,
+              targetVideoId,
+            ),
+          });
+          if (persist) {
             const transcript = await updateTranscript(
               targetVideoId,
               result.content,
@@ -728,7 +746,9 @@ export function createContentState(options: {
           formattingNotice =
             result.content === source
               ? `No formatting changes. ${attemptsSummary}`
-              : `Formatting applied and saved. ${attemptsSummary}`;
+              : persist
+                ? `Formatting applied and saved. ${attemptsSummary}`
+                : `Formatting finished, but a newer transcript change was kept. ${attemptsSummary}`;
           formattingNoticeVideoId = targetVideoId;
         }
         formattingNoticeTone = "success";
@@ -784,6 +804,7 @@ export function createContentState(options: {
           formattingNotice =
             "Draft reset to original transcript. Save to persist.";
         } else {
+          bumpTranscriptRevision(transcriptRevisionByVideoId, targetVideoId);
           const transcript = await updateTranscript(
             targetVideoId,
             original,

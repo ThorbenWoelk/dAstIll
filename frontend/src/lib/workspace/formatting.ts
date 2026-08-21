@@ -58,6 +58,34 @@ export function buildFormattingAttemptSummary(result: {
   return `Attempts ${result.attempts_used}/${result.max_attempts}.`;
 }
 
+export function currentTranscriptRevision(
+  revisions: Record<string, number>,
+  videoId: string,
+): number {
+  return revisions[videoId] ?? 0;
+}
+
+export function bumpTranscriptRevision(
+  revisions: Record<string, number>,
+  videoId: string,
+): number {
+  const next = currentTranscriptRevision(revisions, videoId) + 1;
+  revisions[videoId] = next;
+  return next;
+}
+
+/** Skip a background transcript PUT when the user changed that video after the job started. */
+export function shouldPersistBackgroundTranscriptWrite(input: {
+  resultDiffersFromSource: boolean;
+  capturedRevision: number;
+  currentRevision: number;
+}): boolean {
+  return (
+    input.resultDiffersFromSource &&
+    input.capturedRevision === input.currentRevision
+  );
+}
+
 export function hasSummaryContent(summary: SummaryPayload) {
   return Boolean(summary.content?.trim());
 }
