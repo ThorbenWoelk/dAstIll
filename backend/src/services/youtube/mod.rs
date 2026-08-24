@@ -30,6 +30,10 @@ pub enum YouTubeError {
     RateLimited(String),
     #[error("Invalid input format")]
     InvalidInput,
+    #[error("Refusing to fetch a non-YouTube URL")]
+    NotYouTubeUrl,
+    #[error("YouTube page is too large")]
+    PageTooLarge,
     #[error("YouTube live stream is not finished yet ({state}); add it after the stream ends")]
     NonCompletedLiveStream { state: &'static str },
 }
