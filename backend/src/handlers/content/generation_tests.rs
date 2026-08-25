@@ -103,6 +103,18 @@ fn valid_cached_transcript_falls_back_to_formatted_when_raw_is_none() {
 }
 
 #[test]
+fn valid_cached_transcript_keeps_long_text_that_quotes_youtube_blurb_phrases() {
+    let body = format!(
+        "{} Creators upload original content every week and share your videos with friends \
+         while treating the platform as the home for video. {}",
+        "Welcome back. Today we cover how YouTube recommendations work in practice. ".repeat(10),
+        "Thanks for watching, and I will see you in the next one."
+    );
+    let t = make_transcript(Some(&body), None);
+    assert!(is_valid_cached_transcript(&t));
+}
+
+#[test]
 fn completed_live_transcript_grace_waits_after_actual_end() {
     let ended = chrono::DateTime::parse_from_rfc3339("2026-04-18T22:27:42Z")
         .unwrap()
