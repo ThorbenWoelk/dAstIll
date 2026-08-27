@@ -1,8 +1,8 @@
 use super::{
     MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, completed_live_transcript_grace_elapsed,
     completed_live_transcript_looks_like_description, is_valid_cached_transcript,
-    should_auto_regenerate_summary, summarizer_error_statuses, summarizer_pending_message,
-    transcript_text,
+    should_auto_regenerate_summary, should_keep_summary_written_during_generation,
+    summarizer_error_statuses, summarizer_pending_message, transcript_text,
 };
 use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
 use crate::services::summarizer::SummarizerError;
@@ -195,6 +195,42 @@ fn should_auto_regenerate_summary_respects_max_attempts() {
         ContentStatus::Pending,
         Some(1),
         MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
+    ));
+}
+
+#[test]
+fn user_path_keeps_any_summary_written_during_generation() {
+    assert!(should_keep_summary_written_during_generation(
+        false,
+        ContentStatus::Ready,
+        None,
+        0
+    ));
+    assert!(should_keep_summary_written_during_generation(
+        false,
+        ContentStatus::Loading,
+        Some(3),
+        0
+    ));
+}
+
+#[test]
+fn queue_path_keeps_manual_ready_summary_written_during_generation() {
+    assert!(should_keep_summary_written_during_generation(
+        true,
+        ContentStatus::Ready,
+        None,
+        0
+    ));
+}
+
+#[test]
+fn queue_path_still_replaces_low_quality_summary_during_auto_regen() {
+    assert!(!should_keep_summary_written_during_generation(
+        true,
+        ContentStatus::Loading,
+        Some(4),
+        0
     ));
 }
 
