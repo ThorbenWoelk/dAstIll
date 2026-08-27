@@ -383,6 +383,15 @@ async fn ensure_podcast_audio_transcript(
         }
     };
 
+    if let Some(existing) = valid_cached_transcript(state, &video.id).await? {
+        let _ = db::update_video_transcript_status(&state.db, &video.id, ContentStatus::Ready).await;
+        tracing::info!(
+            video_id = %video.id,
+            "keeping transcript written while podcast ASR was in flight"
+        );
+        return Ok(existing);
+    }
+
     let transcript = Transcript {
         video_id: video.id.clone(),
         raw_text: Some(raw),
@@ -490,6 +499,15 @@ pub(crate) async fn ensure_transcript(
         "transcript download completed"
     );
 
+    if let Some(existing) = valid_cached_transcript(state, video_id).await? {
+        let _ = db::update_video_transcript_status(&state.db, video_id, ContentStatus::Ready).await;
+        tracing::info!(
+            video_id = %video_id,
+            "keeping transcript written while extraction was in flight"
+        );
+        return Ok(existing);
+    }
+
     if let Some(metadata) = completed_live.as_ref() {
         let candidate_text = if raw.trim().is_empty() {
             &formatted
@@ -569,6 +587,20 @@ fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus)
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed)
     }
+}
+
+/// True when a summary that appeared (or was edited) while generation was running
+/// should be kept instead of the just-finished model output.
+pub(super) fn should_keep_summary_written_during_generation(
+    allow_cached_auto_regen: bool,
+    summary_status: ContentStatus,
+    quality_score: Option<u8>,
+    auto_regen_attempts: u8,
+) -> bool {
+    if !allow_cached_auto_regen {
+        return true;
+    }
+    !should_auto_regenerate_summary(summary_status, quality_score, auto_regen_attempts)
 }
 
 async fn ensure_summary_internal(
@@ -689,6 +721,31 @@ async fn ensure_summary_internal(
         }
     };
     tracing::info!(video_id = %video_id, "summary generation completed");
+
+    {
+        let current_video = require_video(state, video_id).await?;
+        if let Some(existing) = db::get_summary(&state.db, video_id)
+            .await
+            .map_err(map_db_err)?
+        {
+            let auto_regen_attempts = db::get_summary_auto_regen_attempts(&state.db, video_id)
+                .await
+                .map_err(map_db_err)?;
+            if should_keep_summary_written_during_generation(
+                allow_cached_auto_regen,
+                current_video.summary_status,
+                existing.quality_score,
+                auto_regen_attempts,
+            ) {
+                set_summary_status_and_evict(state, video_id, ContentStatus::Ready).await?;
+                tracing::info!(
+                    video_id = %video_id,
+                    "keeping summary written while generation was in flight"
+                );
+                return Ok(existing);
+            }
+        }
+    }
 
     let summary = Summary {
         video_id: video_id.to_string(),
