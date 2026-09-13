@@ -352,12 +352,12 @@ export class MiniReaderState {
 
   async markActiveSummaryRead() {
     if (!this.activeSummary || this.markingRead) return;
+    const markedId = this.activeSummary.video_id;
     this.markingRead = true;
     this.error = null;
     try {
-      await updateMiniReadStatus(this.activeSummary.video_id, true);
+      await updateMiniReadStatus(markedId, true);
       if (!this.reader) return;
-      const markedId = this.activeSummary.video_id;
       this.reader = {
         ...this.reader,
         summaries: this.reader.summaries.map((s) =>
