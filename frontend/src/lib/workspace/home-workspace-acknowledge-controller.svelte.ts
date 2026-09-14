@@ -158,8 +158,13 @@ export function createHomeWorkspaceAcknowledgeController(options: {
       }
     } catch (error) {
       options.sidebarState.replaceVideos(previousVideos);
-      options.sidebarState.selectVideo(previousSelectedVideoId);
       options.setPendingSelectedVideo(previousPendingSelectedVideo);
+      if (selectionDroppedFromFilter && previousSelectedVideoId) {
+        // Reload content: optimistic navigation already swapped the panel.
+        await options.selectVideo(previousSelectedVideoId);
+      } else {
+        options.sidebarState.selectVideo(previousSelectedVideoId);
+      }
       const reverted = resolveRevertedVideoForAcknowledge(
         previousVideos,
         targetVideoId,
