@@ -84,4 +84,67 @@ describe("createHomeWorkspaceAcknowledgeController", () => {
     expect(selectedVideoId).toBe("v3");
     expect(resetInteractionCalls).toEqual([{}]);
   });
+
+  it("reloads the original video content when unread-filter acknowledge fails after optimistic navigation", async () => {
+    const { createHomeWorkspaceAcknowledgeController } =
+      await import("../src/lib/workspace/home-workspace-acknowledge-controller.svelte");
+
+    let videos = [
+      makeVideo("v1", false),
+      makeVideo("v2", false),
+      makeVideo("v3", false),
+    ];
+    let selectedVideoId: string | null = "v2";
+    let pendingSelectedVideo: Video | null = null;
+    const selectedVideoCalls: string[] = [];
+    const sidebarSelectCalls: Array<string | null> = [];
+    const updateAcknowledgedMock = mock(async () => {
+      throw new Error("acknowledge failed");
+    });
+
+    const controller = createHomeWorkspaceAcknowledgeController({
+      sidebarState: {
+        get selectedVideoId() {
+          return selectedVideoId;
+        },
+        get videos() {
+          return videos;
+        },
+        get acknowledgedFilter() {
+          return "unack" as const;
+        },
+        bumpVideoListMutationEpoch: () => {},
+        replaceVideos: (nextVideos: Video[]) => {
+          videos = nextVideos;
+        },
+        selectVideo: (videoId: string | null) => {
+          sidebarSelectCalls.push(videoId);
+          selectedVideoId = videoId;
+        },
+      } as never,
+      content: {
+        resetInteractionState: () => {},
+      } as never,
+      getPendingSelectedVideo: () => pendingSelectedVideo,
+      setPendingSelectedVideo: (value) => {
+        pendingSelectedVideo = value;
+      },
+      setErrorMessage: () => {},
+      getSelectedChannelId: () => "channel-1",
+      selectVideo: async (videoId: string) => {
+        selectedVideoCalls.push(videoId);
+        selectedVideoId = videoId;
+      },
+      setVideoAcknowledgeSync: () => {},
+      updateAcknowledged: updateAcknowledgedMock,
+    });
+
+    await controller.toggleAcknowledge();
+
+    expect(updateAcknowledgedMock).toHaveBeenCalledWith("v2", true);
+    expect(videos.map((video) => video.id)).toEqual(["v1", "v2", "v3"]);
+    expect(selectedVideoCalls).toEqual(["v3", "v2"]);
+    expect(selectedVideoId).toBe("v2");
+    expect(sidebarSelectCalls).toEqual([]);
+  });
 });
