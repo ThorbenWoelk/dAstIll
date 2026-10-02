@@ -6,7 +6,13 @@
  * this logic inline. Keep the two in sync when updating caching rules.
  */
 
-export const CACHE_VERSION = "v2";
+export const CACHE_VERSION = "v3";
+
+/**
+ * Query parameter added only to Cache Storage keys for `/api/*` responses.
+ * It is never sent on the network request. `static/sw.js` must use the same name.
+ */
+export const API_CACHE_AUTH_PARAM = "__dastill_auth_cache";
 
 /** Cache name for Vite-built JS/CSS chunks and self-hosted fonts. */
 export const STATIC_CACHE = `static-${CACHE_VERSION}`;
@@ -67,4 +73,25 @@ export function isSseRequest(request: {
  */
 export function getObsoleteCacheNames(allCacheNames: string[]): string[] {
   return allCacheNames.filter((name) => !KNOWN_CACHES.includes(name));
+}
+
+/**
+ * Cache Storage matches requests by URL, not by `Authorization`.
+ * Fold the bearer token into the key so one account's cached GET cannot be
+ * served to another account when the network fetch fails.
+ */
+export async function apiResponseCacheKeyUrl(
+  url: string,
+  authorization: string | null,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(authorization ?? ""),
+  );
+  const tokenHash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const keyed = new URL(url);
+  keyed.searchParams.set(API_CACHE_AUTH_PARAM, tokenHash);
+  return keyed.toString();
 }

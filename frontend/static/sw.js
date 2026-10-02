@@ -4,16 +4,18 @@
  * Caching strategies:
  *   - Cache-first  : /_app/** (Vite bundles with content-hash filenames)
  *                    /fonts/** (self-hosted WOFF2 files)
- *   - Network-first: /api/** GET responses (with cache fallback)
+ *   - Network-first: /api/** GET responses (with cache fallback).
+ *     Cache keys include a hash of Authorization so accounts do not share entries.
  *   - Pass-through : everything else, POST/PUT/DELETE, and SSE streams
  *
  * Cache versioning: bump CACHE_VERSION to rotate all caches on the next SW
  * update. The activate handler deletes any cache name not in KNOWN_CACHES.
  *
- * NOTE: This file mirrors the logic in src/lib/sw-utils.ts. Keep them in sync.
+ * NOTE: This file mirrors the logic in src/lib/platform/sw-utils.ts. Keep them in sync.
  */
 
-var CACHE_VERSION = "v2";
+var CACHE_VERSION = "v3";
+var API_CACHE_AUTH_PARAM = "__dastill_auth_cache";
 var STATIC_CACHE = "static-" + CACHE_VERSION;
 var API_CACHE = "api-" + CACHE_VERSION;
 var AVATAR_CACHE = "avatars-" + CACHE_VERSION;
@@ -63,19 +65,45 @@ async function cacheFirst(request, cacheName) {
 }
 
 /**
+ * Cache Storage matches by URL and ignores Authorization. Hash the header into
+ * a synthetic key so a failed fetch cannot return another account's body.
+ * Keep this in sync with apiResponseCacheKeyUrl in src/lib/platform/sw-utils.ts.
+ */
+async function apiCacheKey(request) {
+  var authorization = request.headers.get("authorization") || "";
+  var digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(authorization),
+  );
+  var bytes = new Uint8Array(digest);
+  var tokenHash = "";
+  for (var index = 0; index < bytes.length; index++) {
+    tokenHash += bytes[index].toString(16).padStart(2, "0");
+  }
+  var keyed = new URL(request.url);
+  keyed.searchParams.set(API_CACHE_AUTH_PARAM, tokenHash);
+  return new Request(keyed.toString(), { method: "GET" });
+}
+
+/**
  * Network-first: always attempt a fresh fetch; cache the successful result so
  * it can be served as a fallback when the network is unavailable.
  */
 async function networkFirst(request, cacheName) {
   var cache = await caches.open(cacheName);
+  var cacheKey = await apiCacheKey(request);
   try {
     var response = await fetch(request);
     if (response.ok) {
-      cache.put(request, response.clone());
+      try {
+        await cache.put(cacheKey, response.clone());
+      } catch (_putError) {
+        // A cache write failure must not hide the network response.
+      }
     }
     return response;
   } catch (err) {
-    var cached = await cache.match(request);
+    var cached = await cache.match(cacheKey);
     if (cached) {
       return cached;
     }
