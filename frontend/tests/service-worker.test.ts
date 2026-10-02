@@ -1,14 +1,20 @@
 import { describe, expect, it } from "bun:test";
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   KNOWN_CACHES,
   STATIC_CACHE,
   API_CACHE,
+  API_CACHE_AUTH_PARAM,
   AVATAR_CACHE,
   isStaticAssetPath,
   isChannelAvatarThumbnailUrl,
   isSseRequest,
   getObsoleteCacheNames,
+  apiResponseCacheKeyUrl,
 } from "../src/lib/platform/sw-utils";
 
 // ── URL classification ────────────────────────────────────────────────────────
@@ -168,5 +174,46 @@ describe("KNOWN_CACHES", () => {
     expect(STATIC_CACHE).toMatch(/^static-v\d+$/);
     expect(API_CACHE).toMatch(/^api-v\d+$/);
     expect(AVATAR_CACHE).toMatch(/^avatars-v\d+$/);
+  });
+});
+
+describe("apiResponseCacheKeyUrl", () => {
+  const preferencesUrl = "https://app.example/api/preferences?view=home";
+
+  it("uses a different cache entry for each authorization token", async () => {
+    const userA = await apiResponseCacheKeyUrl(
+      preferencesUrl,
+      "Bearer token-a",
+    );
+    const userB = await apiResponseCacheKeyUrl(
+      preferencesUrl,
+      "Bearer token-b",
+    );
+    const anonymous = await apiResponseCacheKeyUrl(preferencesUrl, null);
+
+    expect(userA).not.toBe(userB);
+    expect(userA).not.toBe(anonymous);
+    expect(userB).not.toBe(anonymous);
+    expect(userA).toBe(
+      await apiResponseCacheKeyUrl(preferencesUrl, "Bearer token-a"),
+    );
+
+    const keyed = new URL(userA);
+    expect(keyed.pathname).toBe("/api/preferences");
+    expect(keyed.searchParams.get("view")).toBe("home");
+    expect(keyed.searchParams.get(API_CACHE_AUTH_PARAM)).toHaveLength(64);
+  });
+
+  it("matches the service worker cache-key parameter", () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../static/sw.js"),
+      "utf8",
+    );
+    expect(source).toContain(
+      `var API_CACHE_AUTH_PARAM = "${API_CACHE_AUTH_PARAM}"`,
+    );
+    expect(source).toContain('crypto.subtle.digest(\n    "SHA-256"');
+    expect(source).toContain("await cache.put(cacheKey, response.clone())");
+    expect(source).toContain("await cache.match(cacheKey)");
   });
 });
