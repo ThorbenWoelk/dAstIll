@@ -401,6 +401,13 @@ pub async fn publish_libsql_snapshot(
             "failed to prune libSQL snapshot delta log"
         );
     }
+    if let Err(err) = prune_superseded_snapshots(objects, &manifest.snapshot_key).await {
+        tracing::warn!(
+            error = %err,
+            snapshot_key = %manifest.snapshot_key,
+            "failed to prune superseded libSQL snapshots"
+        );
+    }
 
     tracing::info!(
         snapshot_key = %manifest.snapshot_key,
@@ -411,6 +418,31 @@ pub async fn publish_libsql_snapshot(
     );
 
     Ok(manifest)
+}
+
+/// Deletes every snapshot except the one the manifest now points to.
+///
+/// Only the current snapshot is ever restored. Deleting the rest here, after
+/// the new manifest is written, keeps storage small without an age-based
+/// bucket rule, which could delete the live snapshot when nothing is
+/// published for a while and force a slow full rebuild on the next start.
+async fn prune_superseded_snapshots(
+    objects: &dyn ObjectStore,
+    current_snapshot_key: &str,
+) -> Result<usize, StoreError> {
+    let keys = objects
+        .list_keys(&format!("{SNAPSHOT_PREFIX}/"))
+        .await
+        .map_err(|err| StoreError::ObjectStore(err.to_string()))?;
+    let mut deleted = 0usize;
+    for key in keys.iter().filter(|key| key.as_str() != current_snapshot_key) {
+        objects
+            .delete_key(key)
+            .await
+            .map_err(|err| StoreError::ObjectStore(err.to_string()))?;
+        deleted += 1;
+    }
+    Ok(deleted)
 }
 
 pub async fn replay_libsql_snapshot_deltas(

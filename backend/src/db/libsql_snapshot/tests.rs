@@ -1,8 +1,10 @@
 use super::{
     DELTA_SCHEMA_VERSION, LibsqlSnapshotDeltaOperation, LibsqlSnapshotDeltaRecord,
     LibsqlSnapshotSourceState, PrefixState, apply_delta_record, checkpoint_libsql_file,
-    compress_gzip, decompress_gzip, sha256_hex,
+    MANIFEST_KEY, SNAPSHOT_PREFIX, compress_gzip, decompress_gzip, prune_superseded_snapshots,
+    sha256_hex,
 };
+use crate::object_store::{ObjectStore, memory::MemoryObjectStore};
 use crate::models::{CanonicalVideoRecord, ContentStatus, UserPreferences};
 use chrono::TimeZone;
 use tempfile::tempdir;
@@ -230,4 +232,39 @@ async fn apply_delta_record_updates_sql_cache_semantically() {
     assert_eq!(sample_count, 3);
     assert_eq!(total_words, 120);
     assert_eq!(total_duration, 12.5);
+}
+
+#[tokio::test]
+async fn prune_superseded_snapshots_keeps_only_the_current_snapshot() {
+    let objects = MemoryObjectStore::new();
+    let old_key = format!("{SNAPSHOT_PREFIX}/search-fts-v2-2026-09-01T00-00-00Z.sqlite.gz");
+    let older_key = format!("{SNAPSHOT_PREFIX}/search-fts-v2-2026-08-01T00-00-00Z.sqlite.gz");
+    let current_key = format!("{SNAPSHOT_PREFIX}/search-fts-v2-2026-10-06T00-00-00Z.sqlite.gz");
+    for key in [&old_key, &older_key, &current_key] {
+        objects
+            .put_bytes(key, b"snapshot", "application/gzip")
+            .await
+            .expect("seed snapshot");
+    }
+    objects
+        .put_bytes(MANIFEST_KEY, b"{}", "application/json")
+        .await
+        .expect("seed manifest");
+
+    let deleted = prune_superseded_snapshots(&objects, &current_key)
+        .await
+        .expect("prune succeeds");
+
+    assert_eq!(deleted, 2);
+    assert_eq!(
+        objects
+            .list_keys(&format!("{SNAPSHOT_PREFIX}/"))
+            .await
+            .expect("list snapshots"),
+        vec![current_key]
+    );
+    assert!(
+        objects.key_exists(MANIFEST_KEY).await.expect("manifest check"),
+        "pruning must not touch the manifest"
+    );
 }
