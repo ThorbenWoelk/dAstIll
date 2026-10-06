@@ -254,7 +254,7 @@ drifts.
 | Cloud Run ASR           | Scales to zero. Runs only when a podcast episode has no transcript.                                                     | Inside free tier    |
 | Firebase Hosting        | Static files, about 1 MB per first visit, then cached by the browser and service worker.                               | Inside free tier    |
 | Firebase Auth           | Google sign-in only.                                                                                                    | Free                |
-| Cloud Storage           | Small JSON objects plus search snapshots. Snapshots are deleted after 30 days.                                          | Well under 1 EUR    |
+| Cloud Storage           | Small JSON objects plus one current search snapshot. The backend deletes older snapshots after each publish.            | Well under 1 EUR    |
 | Artifact Registry       | Keeps two images per service (current and one rollback).                                                                | Under 0.50 EUR      |
 | Secret Manager          | Eight secrets. The first six active versions are free.                                                                  | About 0.15 EUR      |
 | Cloud Logging           | Request logs at `info` level stay far below the free 50 GiB.                                                           | Free                |
@@ -271,11 +271,23 @@ How the reader keeps requests low:
 Costs outside GCP, such as the Ollama cloud API used for summaries, are not part of this
 target.
 
-Largest storage item: the backend publishes a full search snapshot to Cloud Storage a few
-seconds after each database change and keeps every snapshot for 30 days. With a large library
-this can reach several GB, which is still cents per month at regional prices. Deleting the
-previous snapshot after a new one is published would remove it. That is a backend change and
-is not done yet.
+### Missing search snapshot
+
+The backend restores its local search index from the current snapshot in Cloud Storage on every
+cold start. If that snapshot is missing, it rebuilds the index from all stored videos instead. Cloud
+Run only gives the backend CPU while a request is running, so the rebuild only moves forward while
+requests arrive, and every request fails until it finishes. The reader shows "Could not reach the
+server".
+
+The backend now keeps exactly one snapshot and deletes the older ones itself, so the current
+snapshot is never removed by age. To recover if it happens anyway, keep requests in flight until
+`/api/health` returns `200`, then wait a minute so the new snapshot is published:
+
+```bash
+while [ "$(curl -s -m 120 -o /dev/null -w '%{http_code}' "$BACKEND_URL/api/health")" != 200 ]; do :; done
+```
+
+Run two or three of these loops in parallel to keep the CPU busy.
 
 ## Billing Budgets
 

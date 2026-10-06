@@ -15,6 +15,10 @@ resource "google_storage_bucket" "data" {
     enabled = true
   }
 
+  # Deleted or overwritten objects stay recoverable for 30 days.
+  # Search snapshots have no age rule: the backend deletes superseded ones
+  # after each publish. An age rule here once deleted the live snapshot
+  # after a quiet month and forced a slow full rebuild on every cold start.
   lifecycle_rule {
     action {
       type = "Delete"
@@ -23,17 +27,6 @@ resource "google_storage_bucket" "data" {
     condition {
       age        = 30
       with_state = "ARCHIVED"
-    }
-  }
-
-  lifecycle_rule {
-    action {
-      type = "Delete"
-    }
-
-    condition {
-      age            = 30
-      matches_prefix = ["runtime-cache/libsql/snapshots/"]
     }
   }
 
