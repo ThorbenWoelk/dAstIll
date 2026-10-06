@@ -274,20 +274,25 @@ target.
 ### Missing search snapshot
 
 The backend restores its local search index from the current snapshot in Cloud Storage on every
-cold start. If that snapshot is missing, it rebuilds the index from all stored videos instead. Cloud
-Run only gives the backend CPU while a request is running, so the rebuild only moves forward while
-requests arrive, and every request fails until it finishes. The reader shows "Could not reach the
-server".
+cold start. If that snapshot is missing, it rebuilds the index from all stored videos instead.
+Requests fail until the rebuild finishes, and the reader shows "Could not reach the server".
 
-The backend now keeps exactly one snapshot and deletes the older ones itself, so the current
-snapshot is never removed by age. To recover if it happens anyway, keep requests in flight until
-`/api/health` returns `200`, then wait a minute so the new snapshot is published:
+The backend keeps exactly one snapshot and deletes older ones itself, so the current snapshot is
+not removed by age. A rebuild also treats missing transcript or summary objects as absent rather
+than failing startup.
+
+If a rebuild is ever needed, give one instance full CPU until it finishes:
 
 ```bash
-while [ "$(curl -s -m 120 -o /dev/null -w '%{http_code}' "$BACKEND_URL/api/health")" != 200 ]; do :; done
+gcloud run services update dastill-backend --region europe-west3 \
+  --no-cpu-throttling --min-instances 1
+# wait for "initialization complete" and "libSQL snapshot published" in the logs
+gcloud run services update dastill-backend --region europe-west3 \
+  --cpu-throttling --min-instances 0
 ```
 
-Run two or three of these loops in parallel to keep the CPU busy.
+Do not try to speed it up with repeated requests. Each request that fails during the rebuild can
+start a new instance, and each new instance starts the rebuild again.
 
 ## Billing Budgets
 

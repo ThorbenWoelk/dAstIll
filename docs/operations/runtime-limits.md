@@ -9,7 +9,7 @@ debugging load, cost, latency, quota exhaustion, or failed requests.
 
 | Surface     | Limit                                  | Value                 | Source                         |
 | ----------- | -------------------------------------- | --------------------- | ------------------------------ |
-| Backend API | Cloud Run max serving instances        | `1`                   | `terraform/cloud_run.tf`       |
+| Backend API | Cloud Run max serving instances        | `1`                   | `.github/workflows/deploy.yml` |
 | Backend API | Cloud Run memory                       | `1Gi`                 | `.github/workflows/deploy.yml` |
 | Backend API | Cloud Run request timeout              | `3600s`               | `.github/workflows/deploy.yml` |
 | Backend API | Terraform service template CPU         | `1000m`               | `terraform/cloud_run.tf`       |
