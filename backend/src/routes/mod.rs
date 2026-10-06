@@ -7,7 +7,8 @@ use tower_http::trace::TraceLayer;
 use crate::cache_headers::add_cache_control;
 use crate::config::SecurityRuntimeConfig;
 use crate::handlers::{
-    analytics, auth, channels, chat, content, highlights, library, mini, preferences, videos,
+    analytics, auth, catch_up, channels, chat, content, highlights, library, mini, preferences,
+    videos,
 };
 use crate::search::handler as search;
 use crate::security::{
@@ -274,6 +275,8 @@ pub fn build_app(
 
     Ok(Router::new()
         .route("/api/health", get(crate::openapi::health))
+        // Authenticated by Cloud Scheduler's OIDC token, not a user token.
+        .route("/api/internal/catch-up", post(catch_up::run_catch_up))
         .route("/api/openapi.json", get(crate::openapi::get_openapi_json))
         .merge(protected_api)
         .layer(middleware::from_fn(add_cache_control))

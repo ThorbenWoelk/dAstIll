@@ -520,7 +520,9 @@ mod search_index;
 mod summary_evaluation;
 
 pub use gap_scan::spawn_gap_scan_worker;
+pub(crate) use queue::count_pending_queue_work;
 pub use queue::spawn_queue_worker;
+pub(crate) use refresh::refresh_all_channels;
 pub use refresh::spawn_refresh_worker;
 pub use search_index::spawn_search_index_worker;
 pub use summary_evaluation::spawn_summary_evaluation_worker;

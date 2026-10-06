@@ -14,6 +14,7 @@ pub mod read_cache;
 pub mod routes;
 pub mod runtime;
 pub mod runtime_paths;
+pub mod scheduler_identity;
 pub mod search;
 pub mod security;
 pub mod services;

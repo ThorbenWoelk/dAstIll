@@ -8,7 +8,7 @@ use crate::{db, state::AppState};
 use super::CHANNEL_REFRESH_INTERVAL;
 
 /// Refresh all channels by fetching their RSS feeds and inserting new videos.
-async fn refresh_all_channels(state: &AppState) {
+pub(crate) async fn refresh_all_channels(state: &AppState) {
     let span = logfire::span!("worker.refresh.batch");
 
     async move {

@@ -30,6 +30,20 @@ pub(super) fn next_queue_task(video: &Video) -> QueueTask {
     }
 }
 
+/// Videos that still need a transcript or summary, up to `limit`.
+pub(crate) async fn count_pending_queue_work(
+    state: &AppState,
+    limit: usize,
+) -> Result<usize, db::StoreError> {
+    let conn = state.db.connect();
+    let videos =
+        db::list_videos_for_queue_processing(&conn, limit, MAX_DISTILLATION_RETRIES).await?;
+    Ok(videos
+        .iter()
+        .filter(|video| next_queue_task(video) != QueueTask::Skip)
+        .count())
+}
+
 pub fn spawn_queue_worker(state: AppState) {
     let span = logfire::span!(
         "worker.queue",

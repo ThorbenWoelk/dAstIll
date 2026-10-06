@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod auth;
+pub mod catch_up;
 pub mod channels;
 pub mod chat;
 pub mod content;

@@ -198,6 +198,7 @@ pub async fn build_runtime(port: u16) -> anyhow::Result<Runtime> {
         youtube_quota_cooldown,
         transcript_cooldown,
         user_activity,
+        catch_up: crate::config::CatchUpRuntimeConfig::from_env().map(Arc::new),
     };
 
     Ok(Runtime {

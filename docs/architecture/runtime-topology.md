@@ -128,6 +128,12 @@ The backend starts five worker loops in parallel.
 
 All five loops skip scheduled work when there is no recent active user. Model and external-service
 failures can also activate a cooldown for the affected path.
+
+Cloud Run also gives the backend CPU only while a request is in flight. So that new videos arrive
+without anyone reading, Cloud Scheduler calls `POST /api/internal/catch-up` every 4 hours. The call
+counts as activity, refreshes every channel, and stays open while pending transcripts and summaries
+are processed, for at most 10 minutes. It accepts only an OIDC token from the scheduler service
+account (`terraform/scheduler.tf`).
 Worker cadence, batch sizes, and cooldown values live in
 [Runtime Limits](/operations/runtime-limits#worker-cadence-and-batch-limits).
 

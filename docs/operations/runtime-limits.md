@@ -77,6 +77,18 @@ as a security hardening gap.
 
 All worker loops skip scheduled work when there is no recent user activity.
 
+## Scheduled Catch-Up
+
+| Setting            | Value                                                    | Source                          |
+| ------------------ | -------------------------------------------------------- | ------------------------------- |
+| Schedule           | every 4 hours (`0 */4 * * *`, UTC)                       | `terraform/scheduler.tf`        |
+| Run length         | until no transcript or summary is pending, at most `10m` | `backend/src/handlers/catch_up` |
+| Progress check     | every `15s`                                              | `backend/src/handlers/catch_up` |
+| Scheduler deadline | `900s`, no retries                                       | `terraform/scheduler.tf`        |
+
+Each run marks the backend as active, refreshes every channel, and keeps the request open so Cloud
+Run allocates CPU while the queue worker processes pending videos. Only one run happens at a time.
+
 ## Content Processing Limits
 
 | Limit                                 | Value        | Used for                                   |
