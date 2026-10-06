@@ -20,6 +20,14 @@ use crate::{
 
 use super::map_db_err;
 
+/// Unread videos scanned per channel in the local index. Cheap: no
+/// object-store reads.
+const MINI_SCAN_PER_CHANNEL: usize = 500;
+/// Newest unread, summarized videos per channel the reader receives. Each
+/// costs two object-store reads, so this bounds the work behind one load.
+/// Older ones appear as newer ones are read.
+const MINI_STORIES_PER_CHANNEL: usize = 100;
+
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct MiniReaderParams {
     pub channel_id: Option<String>,
@@ -105,6 +113,16 @@ fn build_mini_summary_item(
     }
 }
 
+/// Only videos with a finished summary can become stories. Keeps the newest
+/// ones (input is newest first) and skips object-store reads for the rest.
+fn select_story_videos(videos: Vec<crate::models::Video>) -> Vec<crate::models::Video> {
+    videos
+        .into_iter()
+        .filter(|video| video.summary_status == crate::models::ContentStatus::Ready)
+        .take(MINI_STORIES_PER_CHANNEL)
+        .collect()
+}
+
 async fn load_summary_items_for_videos(
     store: &db::Store,
     videos: Vec<crate::models::Video>,
@@ -117,7 +135,7 @@ async fn load_summary_items_for_videos(
     let semaphore = Arc::new(Semaphore::new(db::MAX_CONCURRENT_OBJECT_STORE_OPS));
     let mut join_set: JoinSet<Result<Option<MiniSummaryItem>, db::StoreError>> = JoinSet::new();
 
-    for video in videos {
+    for video in select_story_videos(videos) {
         let store = store.clone();
         let semaphore = Arc::clone(&semaphore);
         let channel_name_by_id = Arc::clone(&channel_name_by_id);
@@ -194,10 +212,10 @@ async fn load_reader_payload(
         &selected_channel_id_value,
         &allowed_channel_ids,
         &[],
-        500,
+        MINI_SCAN_PER_CHANNEL,
         0,
         Some(false),
-        None,
+        Some(false),
         None,
     )
     .await?;

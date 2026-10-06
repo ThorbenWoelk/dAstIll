@@ -5,7 +5,7 @@ import type { SectionId, Story } from "$lib/edition/stories";
  * The last printed edition, kept in this browser so the paper opens
  * instantly while a fresh copy loads. Per reader, best effort only.
  */
-interface StoredEdition {
+export interface StoredEdition {
   version: 1;
   savedAt: number;
   channels: Channel[];
@@ -39,6 +39,27 @@ export function loadStoredEdition(
   }
 }
 
+/** Newest stories that fit the storage budget; the rest load from the API. */
+export function trimToStorageBudget(
+  channels: Channel[],
+  stories: Story[],
+  maxChars: number = MAX_STORED_CHARS,
+): StoredEdition {
+  let count = stories.length;
+  for (;;) {
+    const record: StoredEdition = {
+      version: 1,
+      savedAt: Date.now(),
+      channels,
+      stories: stories.slice(0, count),
+    };
+    if (JSON.stringify(record).length <= maxChars || count === 0) {
+      return record;
+    }
+    count = Math.floor(count / 2);
+  }
+}
+
 export function storeEdition(
   uid: string,
   channels: Channel[],
@@ -46,19 +67,9 @@ export function storeEdition(
 ) {
   const target = storage();
   if (!target) return;
-  const record: StoredEdition = {
-    version: 1,
-    savedAt: Date.now(),
-    channels,
-    stories,
-  };
   try {
-    const raw = JSON.stringify(record);
-    if (raw.length > MAX_STORED_CHARS) {
-      target.removeItem(EDITION_KEY_PREFIX + uid);
-      return;
-    }
-    target.setItem(EDITION_KEY_PREFIX + uid, raw);
+    const record = trimToStorageBudget(channels, stories);
+    target.setItem(EDITION_KEY_PREFIX + uid, JSON.stringify(record));
   } catch {
     // Quota or privacy mode: the paper still works, it just opens slower.
   }

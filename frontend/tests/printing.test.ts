@@ -67,3 +67,16 @@ describe("printEdition", () => {
     });
   });
 });
+
+describe("printEdition progress", () => {
+  it("reports what has arrived after each channel", async () => {
+    const seen: string[][] = [];
+    await printEdition(
+      async (channelId) => page(channelId ?? "a", "2026-10-01T00:00:00Z"),
+      (partial) => seen.push(partial.stories.map((s) => s.id).sort()),
+    );
+    expect(seen[0]).toEqual(["a-1"]);
+    expect(seen.at(-1)).toEqual(["a-1", "b-1", "c-1"]);
+    expect(seen).toHaveLength(3);
+  });
+});
