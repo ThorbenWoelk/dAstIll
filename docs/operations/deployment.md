@@ -163,8 +163,9 @@ managed additions.
 
 `.github/runtime-mode.env` controls release posture.
 
-When release maintenance mode is enabled, CI builds the frontend in maintenance mode. The
-backend still validates and deploys so `dastill-mini` remains available.
+When release maintenance mode is enabled, the validation workflow skips the backend job. The
+backend still deploys. The reader frontend has no separate maintenance page, so the mode does not
+change what readers see.
 
 ## Backend Runtime Boundary
 
@@ -239,6 +240,42 @@ only for cost analysis.
 After `terraform apply`, finish setup in Cloud Billing. Open the billing account, go to
 **Billing export**, and point detailed usage export at the Terraform-managed dataset. Terraform does
 not manage that final toggle.
+
+## Running Cost For One Reader
+
+Target: one person reading every day stays below **5 EUR per month** in GCP charges.
+The numbers below are estimates from GCP list prices and the app's request pattern, not
+measured bills. Turn on [billing budgets](#billing-budgets) to get an alert if real spend
+drifts.
+
+| Resource                | What keeps it cheap                                                                                                     | Expected cost       |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Cloud Run backend       | Scales to zero, one instance max, CPU only while a request runs. The reader makes no background or streaming requests. | Inside free tier    |
+| Cloud Run ASR           | Scales to zero. Runs only when a podcast episode has no transcript.                                                     | Inside free tier    |
+| Firebase Hosting        | Static files, about 1 MB per first visit, then cached by the browser and service worker.                               | Inside free tier    |
+| Firebase Auth           | Google sign-in only.                                                                                                    | Free                |
+| Cloud Storage           | Small JSON objects plus search snapshots. Snapshots are deleted after 30 days.                                          | Well under 1 EUR    |
+| Artifact Registry       | Keeps two images per service (current and one rollback).                                                                | Under 0.50 EUR      |
+| Secret Manager          | Eight secrets. The first six active versions are free.                                                                  | About 0.15 EUR      |
+| Cloud Logging           | Request logs at `info` level stay far below the free 50 GiB.                                                           | Free                |
+
+How the reader keeps requests low:
+
+- One `GET /api/mini` per channel when the paper opens, at most four at a time.
+- One `PUT /api/mini/videos/{id}/read` per finished story.
+- A reload only when the reader asks for it, or when the tab comes back after 30 minutes.
+- No polling, no server-sent events, and no analytics events.
+- The last edition is kept in the browser, so opening the app shows stories before the network
+  answers.
+
+Costs outside GCP, such as the Ollama cloud API used for summaries, are not part of this
+target.
+
+Largest storage item: the backend publishes a full search snapshot to Cloud Storage a few
+seconds after each database change and keeps every snapshot for 30 days. With a large library
+this can reach several GB, which is still cents per month at regional prices. Deleting the
+previous snapshot after a new one is published would remove it. That is a backend change and
+is not done yet.
 
 ## Billing Budgets
 
