@@ -7,7 +7,20 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <title>dAstIll</title>
-    <meta name="theme-color" content="#f8f1ec" />
+    <meta
+      name="description"
+      content="Your subscribed channels, printed as a calm morning paper."
+    />
+    <meta
+      name="theme-color"
+      content="#f1ece1"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#161513"
+      media="(prefers-color-scheme: dark)"
+    />
     <meta name="application-name" content="dAstIll" />
     <meta name="apple-mobile-web-app-title" content="dAstIll" />
     <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
@@ -28,10 +41,6 @@
       sizes="180x180"
       href="%sveltekit.assets%/apple-touch-icon.png"
     />
-    <!-- Warm connections for channel / video thumbnails (YouTube CDNs). -->
-    <link rel="preconnect" href="https://yt3.ggpht.com" crossorigin />
-    <link rel="preconnect" href="https://i.ytimg.com" crossorigin />
-
     %sveltekit.head%
   </head>
 

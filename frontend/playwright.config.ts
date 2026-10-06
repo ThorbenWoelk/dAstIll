@@ -1,63 +1,36 @@
 /**
- * Browser E2E only: Playwright hits `baseURL` (the Svelte app). It does not read
- * DB credentials. Data comes from whatever database the running backend is
- * configured to use (e.g. `~/.config/dastill/backend.env` or `backend/.env`). Start backend + frontend (e.g.
- * `./start_app.sh`) before `bun run test:e2e`.
+ * Browser E2E. Specs mock the backend with `page.route`, so only the frontend
+ * dev server is needed. It is started automatically unless one is already
+ * running on the base URL (for example from `./start_app.sh`).
  */
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL =
   process.env.PLAYWRIGHT_BASE_URL?.replace(/\/$/, "") ??
   "http://127.0.0.1:3543";
-const signedInStorageState = "playwright/.auth/user.json";
-const signedInEnabled = process.env.PLAYWRIGHT_SIGNED_IN === "1";
-const workerCount = Number(process.env.PLAYWRIGHT_WORKERS ?? 2);
+const chromiumPath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
 
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  workers: Number.isFinite(workerCount) && workerCount > 0 ? workerCount : 2,
-  reporter: [["list"], ["html", { open: "never" }]],
-  timeout: 120_000,
-  expect: { timeout: 30_000 },
+  reporter: [["list"]],
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   use: {
     baseURL,
     trace: "on-first-retry",
-    video: "on-first-retry",
     ...devices["Desktop Chrome"],
     viewport: { width: 1280, height: 900 },
+    ...(chromiumPath
+      ? { launchOptions: { executablePath: chromiumPath } }
+      : {}),
   },
-  projects: [
-    {
-      name: "guest-chromium",
-      testIgnore: ["./e2e/signed-in/**"],
-      use: {
-        ...devices["Desktop Chrome"],
-        storageState: { cookies: [], origins: [] },
-      },
-    },
-    ...(signedInEnabled
-      ? [
-          {
-            name: "signed-in-setup",
-            testMatch: /e2e\/signed-in\/auth\.setup\.ts/,
-            use: {
-              ...devices["Desktop Chrome"],
-              storageState: { cookies: [], origins: [] },
-            },
-          },
-          {
-            name: "signed-in-chromium",
-            dependencies: ["signed-in-setup"],
-            testMatch: /e2e\/signed-in\/.*\.spec\.ts/,
-            use: {
-              ...devices["Desktop Chrome"],
-              storageState: signedInStorageState,
-            },
-          },
-        ]
-      : []),
-  ],
+  webServer: {
+    command: "bun run dev -- --host 127.0.0.1 --port 3543 --strictPort",
+    url: baseURL,
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
 });

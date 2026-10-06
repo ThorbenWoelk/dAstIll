@@ -108,10 +108,10 @@ Navigate to the respective frontend and backend folders and run the following be
 3. `bun run lint` (ESLint)
 4. `bun run check` (Svelte / `svelte-check`)
 5. `bun run test` (unit tests)
-6. `bun run test:e2e` (Playwright E2E — requires running stack: `./start_app.sh`)
+6. `bun run test:e2e` (Playwright E2E — mocks the backend and starts the frontend dev server if needed)
 7. `bun run build`
 8. `bun audit --production`
 
-_E2E requires a running stack (`./start_app.sh`). Not in CI — run locally before commit._
+_E2E is not in CI — run locally before commit._
 
 When to add unit vs E2E tests: [design.md#testing](./design.md#testing).

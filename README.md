@@ -1,6 +1,6 @@
 # dAstIll
 
-dAstIll watches content sources, extracts their content, and turns them into a searchable library you can read, question, and listen to.
+dAstIll watches the channels you follow, summarizes every new video, and prints the summaries as a calm morning paper you read one story at a time.
 
 ## Start Here
 
@@ -10,6 +10,7 @@ dAstIll watches content sources, extracts their content, and turns them into a s
 - [Deployment and operations](docs/operations/deployment.md)
 - [Architecture](docs/architecture/overview.md)
 - [AI models](docs/pipelines/ai-models.md)
+- [Reader](docs/features/reader.md)
 - [Feature docs](docs/features/summarization.md)
 - [Security](docs/security/index.md)
 

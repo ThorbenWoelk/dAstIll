@@ -1,0 +1,193 @@
+import { fetchChannelSummaries, setStoryRead, type Channel } from "$lib/api";
+import {
+  forgetEdition,
+  loadStoredEdition,
+  loadStoredSection,
+  storeEdition,
+  storeSection,
+} from "$lib/edition/keepsake";
+import { printEdition } from "$lib/edition/printing";
+import {
+  chooseLeadStory,
+  FRONT_PAGE,
+  insertStory,
+  listSections,
+  storiesInSection,
+  type SectionId,
+  type Story,
+} from "$lib/edition/stories";
+
+export type EditionStatus = "loading" | "ready" | "failed";
+
+/** Reload when the tab returns after this long. No polling otherwise. */
+const STALE_AFTER_MS = 30 * 60 * 1000;
+const RAIL_LENGTH = 6;
+
+function messageOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * State for one reader's paper. Methods are the only write path; components
+ * read the fields and derived values.
+ */
+export class EditionReader {
+  status = $state<EditionStatus>("loading");
+  refreshing = $state(false);
+  channels = $state.raw<Channel[]>([]);
+  stories = $state.raw<Story[]>([]);
+  section = $state<SectionId>(FRONT_PAGE);
+  pickedId = $state<string | null>(null);
+  lastRead = $state.raw<Story | null>(null);
+  /** Something went wrong but the paper is still readable. */
+  notice = $state<string | null>(null);
+  /** Nothing to show because loading failed. */
+  failure = $state<string | null>(null);
+
+  visible = $derived(storiesInSection(this.stories, this.section));
+  lead = $derived(chooseLeadStory(this.visible, this.pickedId));
+  alsoInEdition = $derived(
+    this.visible
+      .filter((story) => story.id !== this.lead?.id)
+      .slice(0, RAIL_LENGTH),
+  );
+  sections = $derived(listSections(this.channels, this.stories));
+
+  readonly #uid: string;
+  #loadedAt = 0;
+  #printRun = 0;
+  /** Stories marked read whose request has not finished yet. */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, never rendered
+  readonly #pendingRead = new Set<string>();
+  /** Read-state writes per story, chained so undo lands after the read. */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, never rendered
+  readonly #writes = new Map<string, Promise<unknown>>();
+
+  constructor(uid: string) {
+    this.#uid = uid;
+    const stored = loadStoredEdition(uid);
+    if (stored) {
+      this.channels = stored.channels;
+      this.stories = stored.stories;
+      this.status = "ready";
+    }
+    this.section = loadStoredSection(uid) ?? FRONT_PAGE;
+  }
+
+  async refresh() {
+    const run = ++this.#printRun;
+    this.refreshing = true;
+    if (this.stories.length === 0 && this.channels.length === 0) {
+      this.status = "loading";
+    }
+    try {
+      const edition = await printEdition(fetchChannelSummaries);
+      if (run !== this.#printRun) return;
+      this.channels = edition.channels;
+      this.stories = edition.stories.filter(
+        (story) => !this.#pendingRead.has(story.id),
+      );
+      if (!this.channels.some((channel) => channel.id === this.section)) {
+        this.section = FRONT_PAGE;
+      }
+      this.notice =
+        edition.missingChannelIds.length > 0
+          ? "Some sections could not be loaded. Refresh to try again."
+          : null;
+      this.failure = null;
+      this.status = "ready";
+      this.#loadedAt = Date.now();
+      this.#remember();
+    } catch (cause) {
+      if (run !== this.#printRun) return;
+      if (this.status === "ready") {
+        this.notice = `Could not refresh: ${messageOf(cause)}`;
+      } else {
+        this.failure = messageOf(cause);
+        this.status = "failed";
+      }
+    } finally {
+      if (run === this.#printRun) this.refreshing = false;
+    }
+  }
+
+  refreshIfStale() {
+    if (!this.refreshing && Date.now() - this.#loadedAt > STALE_AFTER_MS) {
+      void this.refresh();
+    }
+  }
+
+  showSection(section: SectionId) {
+    this.section = section;
+    this.pickedId = null;
+    storeSection(this.#uid, section);
+  }
+
+  /** Read a story from "Also in this edition" next. */
+  pick(storyId: string) {
+    this.pickedId = storyId;
+  }
+
+  async markLeadRead() {
+    const story = this.lead;
+    if (!story) return;
+    this.stories = this.stories.filter((s) => s.id !== story.id);
+    this.lastRead = story;
+    this.pickedId = null;
+    this.#pendingRead.add(story.id);
+    this.#remember();
+    try {
+      await this.#writeReadState(story.id, true);
+    } catch (cause) {
+      this.stories = insertStory(this.stories, story);
+      if (this.lastRead?.id === story.id) this.lastRead = null;
+      this.notice = `Could not mark as read: ${messageOf(cause)}`;
+      this.#remember();
+    } finally {
+      this.#pendingRead.delete(story.id);
+    }
+  }
+
+  async undoLastRead() {
+    const story = this.lastRead;
+    if (!story) return;
+    this.lastRead = null;
+    this.stories = insertStory(this.stories, story);
+    this.pickedId = story.id;
+    this.#pendingRead.delete(story.id);
+    this.#remember();
+    try {
+      await this.#writeReadState(story.id, false);
+    } catch (cause) {
+      this.stories = this.stories.filter((s) => s.id !== story.id);
+      this.notice = `Could not undo: ${messageOf(cause)}`;
+      this.#remember();
+    }
+  }
+
+  dismissNotice() {
+    this.notice = null;
+  }
+
+  forget() {
+    forgetEdition(this.#uid);
+  }
+
+  #writeReadState(storyId: string, read: boolean): Promise<unknown> {
+    const previous = this.#writes.get(storyId) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(() => setStoryRead(storyId, read));
+    this.#writes.set(storyId, next);
+    void next
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.#writes.get(storyId) === next) this.#writes.delete(storyId);
+      });
+    return next;
+  }
+
+  #remember() {
+    storeEdition(this.#uid, this.channels, this.stories);
+  }
+}

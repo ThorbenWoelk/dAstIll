@@ -1,18 +1,13 @@
 {
   "name": "dAstIll",
   "short_name": "dAstIll",
-  "description": "Follow channels, process transcripts, evaluate summaries, and manage your video distillation workspace.",
+  "description": "Your subscribed channels, printed as a calm morning paper.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["standalone", "browser"],
-  "launch_handler": {
-    "client_mode": "navigate-existing"
-  },
-  "capture_links": "existing-client-navigate",
-  "background_color": "#faf9f6",
-  "theme_color": "#f8f1ec",
+  "background_color": "#f1ece1",
+  "theme_color": "#f1ece1",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -25,18 +20,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
     }
   ]
 }

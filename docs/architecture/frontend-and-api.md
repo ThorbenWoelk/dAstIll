@@ -3,42 +3,41 @@
 <script setup>
 const frontendBoundaryDiagram = String.raw`
 flowchart TB
-  routes[Product routes]
-  api[Shared API client]
+  routes[Reader routes]
+  edition[Edition state]
+  api[API client]
   handlers[Axum handlers]
   services[db + services + workers]
 
+  routes --> edition
+  edition --> api
   routes --> api
   api --> handlers
   handlers --> services
 `;
 
-const workspaceBootstrapDiagram = String.raw`
+const editionLoadDiagram = String.raw`
 sequenceDiagram
-  participant ui as workspace route
-  participant api as /api/workspace/bootstrap
-  participant state as sidebar + content state
-  participant snapshot as /api/channels/{id}/snapshot
-  participant content as transcript/summary loaders
+  participant ui as reader page
+  participant cache as browser storage
+  participant api as /api/mini
+  participant read as /api/mini/videos/{id}/read
 
-  ui->>api: GET workspace bootstrap
-  api-->>ui: channels + selected ids + snapshot + ai/search status
-  ui->>state: render sidebar and restore selection
-  alt bootstrap includes selected snapshot
-    ui->>state: apply snapshot immediately
-  else snapshot missing or stale
-    ui->>snapshot: GET selected channel snapshot
-    snapshot-->>ui: channel snapshot payload
-    ui->>state: apply snapshot
+  ui->>cache: show last stored edition
+  ui->>api: GET (no channel id)
+  api-->>ui: channel list + first channel's unread summaries
+  par at most four at a time
+    ui->>api: GET ?channel_id=...
+    api-->>ui: that channel's unread summaries
   end
-  ui->>content: load transcript/summary/info for selected video
+  ui->>cache: store merged edition
+  ui->>read: PUT {read: true} when a story is finished
 `;
 
 const requestTrustDiagram = String.raw`
 flowchart TB
   browser[Browser]
-  tauri[Tauri Android]
-  ui[UI]
+  ui[Reader UI]
   direct[Firebase bearer token]
   proxy[Trusted proxy headers]
   backend[Axum backend]
@@ -46,7 +45,6 @@ flowchart TB
   authz[Scoped access]
 
   browser --> ui
-  tauri --> ui
   ui --> direct
   direct --> backend
   proxy --> backend
@@ -56,80 +54,71 @@ flowchart TB
 
 const apiFamiliesDiagram = String.raw`
 flowchart TD
-  ui[Workspace UI]
-  library[Library + content APIs]
-  search[Search APIs]
-  chat[Chat + SSE APIs]
-  auth[Auth + mobile handoff APIs]
-  user[User state APIs]
-  analytics[Analytics ingest APIs]
+  ui[Reader UI]
+  mini[Mini reader APIs]
+  library[Channel APIs]
+  other[Search, chat, highlights, analytics APIs]
 
+  ui --> mini
   ui --> library
-  ui --> search
-  ui --> chat
-  ui --> auth
-  ui --> user
-  ui --> analytics
+  other -.-> none[No UI in the current reader]
 `;
 </script>
 
 ## API Design
 
-Web and native mobile clients call the backend directly through the configured API base. No Backend for Frontend (BFF).
+The reader calls the backend directly through the configured API base (`PUBLIC_API_BASE`).
+There is no Backend for Frontend (BFF).
 
 <MermaidDiagram
-  caption="Route components call the shared API client, which reaches Axum handlers. Handlers delegate durable work to storage, services, and workers."
+  caption="Routes read state from the edition controller, which calls the API client. Handlers delegate durable work to storage, services, and workers."
   :chart="frontendBoundaryDiagram"
 />
 
-Most frontend HTTP requests go through `frontend/src/lib/api.ts`, which wraps the shared transport
-helpers in `frontend/src/lib/api-client.ts`.
+## Frontend Structure
 
-Search-status updates use a native `EventSource` stream from `/api/search/status/stream`.
+The frontend is a static SvelteKit single-page app. It renders entirely in the browser.
 
-Chat replies use server-sent events over `fetch` as it supports authenticated requests,
-streaming `POST` responses, cancellation, and reconnect/resume for an active conversation.
+| Path                                     | Purpose                                                    |
+| ---------------------------------------- | ---------------------------------------------------------- |
+| `src/lib/api.ts`                         | All backend requests, token header, readable errors         |
+| `src/lib/session.svelte.ts`              | Firebase Google sign-in state                               |
+| `src/lib/edition/printing.ts`            | Loads every channel and merges stories by release date      |
+| `src/lib/edition/stories.ts`             | Pure story, section, and date helpers                       |
+| `src/lib/edition/summary.ts`             | Splits a summary into standfirst, glance box, and body      |
+| `src/lib/edition/markdown.ts`            | Markdown to sanitized HTML                                  |
+| `src/lib/edition/keepsake.ts`            | Last edition and chosen section in browser storage          |
+| `src/lib/edition/reader.svelte.ts`       | Reader state: sections, lead story, mark read, undo         |
+| `src/lib/components/`                    | Masthead, section nav, story, read bar, rail, sign-in       |
+| `src/lib/bindings/`                      | Types generated from the backend by `ts-rs`                 |
 
 ## Routing
 
-| Route             | Purpose                                             |
-| ----------------- | --------------------------------------------------- |
-| `/`               | Main workspace                                      |
-| `/channels/[id]`  | Per-channel overview and management                 |
-| `/download-queue` | Queue-oriented operational view                     |
-| `/highlights`     | Cross-video highlight browser                       |
-| `/mini`           | Text-first reader for summaries and source content  |
-| `/chat`           | RAG conversations                                   |
-| `/vocabulary`     | Custom word replacements for summaries              |
-| `/login`          | Sign-in, guest continuation, mobile browser handoff |
-| `/logout`         | Session sign-out                                    |
+| Route       | Purpose                                                |
+| ----------- | ------------------------------------------------------ |
+| `/`         | The reader: front page or one section                  |
+| `/sections` | Follow a new channel or stop following one             |
+| `/mini`     | Old reader URL. Firebase Hosting redirects it to `/`.  |
 
-## Workspace Bootstrap
+Signed-out visitors see the sign-in page on every route.
 
-The main workspace starts from:
+## Loading The Paper
 
-```text
-GET /api/workspace/bootstrap
-```
-
-The payload includes:
-
-- AI availability and AI status
-- library containers and sources
-- channel list
-- selected source/channel/item ids
-- initial channel snapshot when available
-- search status
+`GET /api/mini` returns unread summaries for one channel at a time. The reader asks once without a
+channel id, which returns the channel list and the first channel's summaries, then asks for the
+other channels with at most four requests in flight. It merges the results newest first.
 
 <MermaidDiagram
-  caption="Workspace bootstrap loads the sidebar, selected ids, optional selected-channel snapshot, and status surfaces before deeper content hydration."
-  :chart="workspaceBootstrapDiagram"
+  caption="The reader shows the stored edition at once, then loads every channel and stores the merged result. Finishing a story sends one small PUT."
+  :chart="editionLoadDiagram"
 />
 
-The frontend applies a snapshot from bootstrap immediately when it is present. If the bootstrap
-payload lacks a usable selected-channel snapshot, the frontend fetches
-`/api/channels/{id}/snapshot` and then loads transcript, summary, and video info for the selected
-video.
+Marking a story read updates the page first and then sends the request. If the request fails, the
+story comes back and a notice explains why. Undo sends `read: false` after the first request has
+finished, so the two never race.
+
+The reader reloads only when asked, or when the tab becomes visible again after 30 minutes. See
+[Running Cost For One Reader](/operations/deployment#running-cost-for-one-reader).
 
 ## Request Trust
 
@@ -142,21 +131,28 @@ The backend accepts two trust modes:
 
 | Mode          | Inputs                                                                 | Used by                        |
 | ------------- | ---------------------------------------------------------------------- | ------------------------------ |
-| Direct auth   | `Authorization: Bearer <firebase-id-token>`                            | Browser frontend and Tauri UI  |
+| Direct auth   | `Authorization: Bearer <firebase-id-token>`                            | Reader frontend                |
 | Trusted proxy | `x-dastill-proxy-auth` plus `x-dastill-auth-state`, role, and user ids | Trusted first-party automation |
 
 Every protected request resolves an `AccessContext` before channel, video, search, chat, or
 operator-only authorization decisions.
 
-Signed-out browsing is allowed where routes support it. Signed-out chat uses the ephemeral path and
-does not write persistent conversation records.
+The reader requires Google sign-in. The backend still supports signed-out access on routes that
+allow it, such as the ephemeral chat path.
 
 ## API Families
 
 <MermaidDiagram
-  caption="User-facing request families stay separated by concern: library/content APIs, search APIs, chat SSE APIs, auth/mobile-handoff APIs, user-state APIs, and analytics ingest APIs terminate at distinct handler boundaries."
+  caption="The reader uses the mini reader and channel APIs. The other API families remain in the backend without a UI."
   :chart="apiFamiliesDiagram"
 />
+
+The reader uses:
+
+- `GET /api/mini` and `PUT /api/mini/videos/{id}/read`
+- `GET /api/channels`, `POST /api/channels`, and `DELETE /api/channels/{id}`
+
+The families below are still served by the backend. The current frontend does not call them.
 
 ### Library And Content
 

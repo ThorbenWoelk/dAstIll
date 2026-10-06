@@ -3,6 +3,10 @@
 This runbook covers local Android tooling, launch commands, APK builds, CI artifacts, and smoke
 checks for the Tauri Android shell.
 
+> The redesigned reader does not include the Android sign-in handoff that the old frontend used.
+> The APK still builds and opens, but Google sign-in inside it is not supported. On a phone, open
+> the hosted reader in the browser and choose **Add to Home Screen** instead.
+
 ## Tooling
 
 Install the Tauri CLI once:
@@ -74,11 +78,7 @@ browser-auth origin in the frontend env. Use `frontend/.env.example` for the cur
 Verify these after local launch or APK install:
 
 1. The app launches without a blank screen.
-2. Anonymous mode works on first load.
-3. Workspace data loads from the backend.
-4. A content item opens.
-5. Sign-in completes.
-6. Queue, highlights, chat, and workspace navigation load.
+2. The sign-in page shows the masthead and the Google sign-in button.
 
 ## Build APKs
 

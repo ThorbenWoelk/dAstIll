@@ -13,12 +13,12 @@ So you can decide which content is worth your time before doom-scrolling mindles
 
 **Core capabilities:**
 
-- **Source tracking**: Subscribe to YouTube channels, OpenAlex searches, podcasts, or individual websites
+- **Reader**: [Read your channels as a calm morning paper](/features/reader), newest first, one story at a time
+- **Source tracking**: Follow YouTube channels and podcasts
 - **AI summarization**: [Generate consistent summaries](/features/summarization) which are evaluated by an LLM-as-a-judge for quality
-- **Highlights**: Save important snippets for quick reference later
-- **Summary audio**: [Generate spoken playback](/features/tts) for ready summaries when Google Cloud Text-to-Speech is enabled
-- **Search**: [Search keywords and content](/features/search) across your transcripts and summaries
-- **Chat**: [Ask questions about your content](/features/chat) with answers grounded on your personal library
+
+The backend also has [search](/features/search), [chat](/features/chat), and
+[summary audio](/features/tts) APIs. The current reader does not show them.
 
 **Supported content sources:**
 

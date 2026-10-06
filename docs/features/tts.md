@@ -1,5 +1,8 @@
 # TTS
 
+> The current reader frontend has no UI for this feature. The backend API described here still
+> exists.
+
 dAstIll uses Google Cloud Text-to-Speech to synthesize summary audio.
 
 Configuration keys live in `backend/.env.example`.

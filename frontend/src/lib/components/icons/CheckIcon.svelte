@@ -1,9 +1,5 @@
 <script lang="ts">
-  let {
-    size = 14,
-    strokeWidth = 2.4,
-    className = "",
-  }: { size?: number; strokeWidth?: number; className?: string } = $props();
+  let { size = 18 }: { size?: number } = $props();
 </script>
 
 <svg
@@ -12,11 +8,10 @@
   viewBox="0 0 24 24"
   fill="none"
   stroke="currentColor"
-  stroke-width={strokeWidth}
+  stroke-width="2.25"
   stroke-linecap="round"
   stroke-linejoin="round"
-  class={className}
   aria-hidden="true"
 >
-  <path d="m5 12 4.5 4.5L19 7"></path>
+  <path d="M5 12.5l4.5 4.5L19 7.5" />
 </svg>
