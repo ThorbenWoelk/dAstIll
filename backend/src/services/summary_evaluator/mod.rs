@@ -191,9 +191,14 @@ fn parse_model_params_billions(model: &str) -> Option<u16> {
     found
 }
 
+/// Total parameters, in billions, for cloud models whose tag carries no size.
+/// Values come from the model pages on ollama.com/library.
 fn known_cloud_model_params_billions(model: &str) -> Option<u16> {
     match model {
         "glm-5.1:cloud" => Some(744),
+        "glm-5.3:cloud" => Some(753),
+        "deepseek-v4-pro:cloud" => Some(1600),
+        "kimi-k3:cloud" => Some(2810),
         _ => None,
     }
 }
