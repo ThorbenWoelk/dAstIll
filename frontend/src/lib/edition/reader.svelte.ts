@@ -81,7 +81,17 @@ export class EditionReader {
       this.status = "loading";
     }
     try {
-      const edition = await printEdition(fetchChannelSummaries);
+      const edition = await printEdition(fetchChannelSummaries, (partial) => {
+        // First load only: show stories as channels arrive. A stored edition
+        // already on screen stays until the full edition replaces it.
+        if (run !== this.#printRun || this.status !== "loading") return;
+        if (partial.stories.length === 0) return;
+        this.channels = partial.channels;
+        this.stories = partial.stories.filter(
+          (story) => !this.#pendingRead.has(story.id),
+        );
+        this.status = "ready";
+      });
       if (run !== this.#printRun) return;
       this.channels = edition.channels;
       this.stories = edition.stories.filter(

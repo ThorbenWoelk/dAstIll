@@ -1,7 +1,7 @@
 use chrono::Utc;
 use std::collections::HashMap;
 
-use super::build_mini_summary_item;
+use super::{MINI_STORIES_PER_CHANNEL, build_mini_summary_item, select_story_videos};
 use crate::models::{ContentStatus, Summary, Video, VideoInfo};
 
 #[test]
@@ -89,4 +89,49 @@ fn build_mini_summary_item_prefers_video_info_when_present() {
         Some("https://example.com/info-thumb.jpg")
     );
     assert!(!item.read);
+}
+
+fn video_with_summary(id: usize, summary_status: ContentStatus) -> Video {
+    Video {
+        id: format!("video-{id}"),
+        channel_id: "channel-1".to_string(),
+        title: format!("Video {id}"),
+        thumbnail_url: None,
+        published_at: Utc::now(),
+        is_short: false,
+        transcript_status: ContentStatus::Ready,
+        summary_status,
+        acknowledged: false,
+        retry_count: 0,
+        quality_score: None,
+    }
+}
+
+#[test]
+fn select_story_videos_skips_videos_without_a_ready_summary() {
+    let videos = vec![
+        video_with_summary(1, ContentStatus::Pending),
+        video_with_summary(2, ContentStatus::Ready),
+        video_with_summary(3, ContentStatus::Failed),
+        video_with_summary(4, ContentStatus::Ready),
+    ];
+
+    let ids: Vec<String> = select_story_videos(videos)
+        .into_iter()
+        .map(|video| video.id)
+        .collect();
+
+    assert_eq!(ids, vec!["video-2", "video-4"]);
+}
+
+#[test]
+fn select_story_videos_keeps_only_the_newest_stories() {
+    let videos = (0..MINI_STORIES_PER_CHANNEL + 25)
+        .map(|id| video_with_summary(id, ContentStatus::Ready))
+        .collect();
+
+    let selected = select_story_videos(videos);
+
+    assert_eq!(selected.len(), MINI_STORIES_PER_CHANNEL);
+    assert_eq!(selected[0].id, "video-0");
 }
