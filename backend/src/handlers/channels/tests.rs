@@ -82,6 +82,7 @@ async fn test_app_state(db: crate::db::Store) -> AppState {
         youtube_quota_cooldown: Arc::new(YouTubeQuotaCooldown::youtube_quota()),
         transcript_cooldown: Arc::new(TranscriptCooldown::transcript()),
         user_activity: Arc::new(UserActivity::from_env()),
+        catch_up: None,
     }
 }
 

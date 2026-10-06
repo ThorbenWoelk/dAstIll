@@ -14,6 +14,7 @@ locals {
       "storage.googleapis.com",
       "storagetransfer.googleapis.com",
       "texttospeech.googleapis.com",
+      "cloudscheduler.googleapis.com",
     ],
     var.billing_export_enabled ? [
       "bigquery.googleapis.com",

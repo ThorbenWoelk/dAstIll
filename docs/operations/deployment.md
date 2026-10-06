@@ -251,6 +251,7 @@ drifts.
 | Resource                | What keeps it cheap                                                                                                     | Expected cost       |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------- |
 | Cloud Run backend       | Scales to zero, one instance max, CPU only while a request runs. The reader makes no background or streaming requests. | Inside free tier    |
+| Scheduled catch-up      | Cloud Scheduler wakes the backend every 4 hours for at most 10 minutes: at most about 60k CPU-seconds a month.           | Inside free tier    |
 | Cloud Run ASR           | Scales to zero. Runs only when a podcast episode has no transcript.                                                     | Inside free tier    |
 | Firebase Hosting        | Static files, about 1 MB per first visit, then cached by the browser and service worker.                               | Inside free tier    |
 | Firebase Auth           | Google sign-in only.                                                                                                    | Free                |

@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use tokio::sync::{Mutex, RwLock};
 
-use crate::config::SecurityRuntimeConfig;
+use crate::config::{CatchUpRuntimeConfig, SecurityRuntimeConfig};
 use crate::db::Store;
 use crate::read_cache::ReadCache;
 use crate::search::{FtsIndex, SearchProgress, SearchService};
@@ -73,4 +73,6 @@ pub struct AppState {
     pub youtube_quota_cooldown: Arc<YouTubeQuotaCooldown>,
     pub transcript_cooldown: Arc<TranscriptCooldown>,
     pub user_activity: Arc<UserActivity>,
+    /// Scheduled background processing; `None` disables the endpoint.
+    pub catch_up: Option<Arc<CatchUpRuntimeConfig>>,
 }

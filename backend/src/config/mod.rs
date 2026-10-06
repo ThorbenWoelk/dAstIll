@@ -171,6 +171,25 @@ pub struct SecurityRuntimeConfig {
     pub anonymous_chat_quota: u32,
 }
 
+/// Scheduled background processing. Present only when both the invoker
+/// service account and the token audience are configured.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatchUpRuntimeConfig {
+    /// Service account Cloud Scheduler signs its OIDC token as.
+    pub invoker_email: String,
+    /// Expected `aud` claim of that token.
+    pub audience: String,
+}
+
+impl CatchUpRuntimeConfig {
+    pub fn from_env() -> Option<Self> {
+        Some(Self {
+            invoker_email: optional_env("CATCH_UP_INVOKER_EMAIL")?,
+            audience: optional_env("CATCH_UP_AUDIENCE")?,
+        })
+    }
+}
+
 const LOCAL_DEV_FIREBASE_PROJECT_ID: &str = "demo-dastill";
 const LOCAL_DEV_DEFAULT_SEEDED_CHANNEL_ID: &str = "UCbRP3c757lWg9M-U7TyEkXA";
 pub const DEFAULT_HARD_FORK_FEED_URL: &str = "https://feeds.simplecast.com/6HKOhNgS";

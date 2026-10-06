@@ -347,6 +347,9 @@ jobs:
           add_env_var LOCAL_ASR_TIMEOUT_SECS "${LOCAL_ASR_TIMEOUT_SECS:-3600}"
           add_env_var BACKEND_CORS_ALLOWED_ORIGINS "$allowed_origins"
           add_env_var GCP_PROJECT_ID "$PROJECT_ID"
+          # Scheduled catch-up (terraform/scheduler.tf): only this account and audience are accepted.
+          add_env_var CATCH_UP_INVOKER_EMAIL "${APP_NAME}-scheduler-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+          add_env_var CATCH_UP_AUDIENCE "${APP_NAME}-catch-up"
           printf '%s\n' 'SUMMARIZE_PATH: "/usr/local/bin/summarize"' >> "$env_file"
           printf '%s\n' 'GOOGLE_TTS_ENABLED: "true"' >> "$env_file"
           printf '%s\n' 'GOOGLE_TTS_VOICE_NAME: "en-US-Wavenet-D"' >> "$env_file"

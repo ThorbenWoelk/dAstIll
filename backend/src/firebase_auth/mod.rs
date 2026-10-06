@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::config::SecurityRuntimeConfig;
 
-fn extract_bearer_token(authorization: Option<&HeaderValue>) -> Result<Option<&str>, String> {
+pub(crate) fn extract_bearer_token(authorization: Option<&HeaderValue>) -> Result<Option<&str>, String> {
     let Some(header_value) = authorization else {
         return Ok(None);
     };
@@ -117,7 +117,7 @@ async fn verify_signed_token(
         .map_err(|error| format!("failed to verify Firebase token: {error}"))
 }
 
-fn parse_cache_control_max_age(cache_control: &str) -> Option<Duration> {
+pub(crate) fn parse_cache_control_max_age(cache_control: &str) -> Option<Duration> {
     cache_control.split(',').find_map(|segment| {
         let trimmed = segment.trim();
         let value = trimmed.strip_prefix("max-age=")?;
