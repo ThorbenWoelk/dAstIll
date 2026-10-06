@@ -56,6 +56,9 @@ fn indicator_status_reports_offline_when_cloud_evaluator_is_in_cooldown() {
 #[test]
 fn evaluator_model_policy_accepts_large_cloud_models() {
     assert!(SummaryEvaluatorService::validate_model_policy("glm-5.1:cloud").is_ok());
+    assert!(SummaryEvaluatorService::validate_model_policy("glm-5.3:cloud").is_ok());
+    assert!(SummaryEvaluatorService::validate_model_policy("deepseek-v4-pro:cloud").is_ok());
+    assert!(SummaryEvaluatorService::validate_model_policy("kimi-k3:cloud").is_ok());
     assert!(SummaryEvaluatorService::validate_model_policy("gemma4:31b-cloud").is_ok());
     assert!(SummaryEvaluatorService::validate_model_policy("qwen3.5:397b-cloud").is_ok());
     assert!(SummaryEvaluatorService::validate_model_policy("llama3.3:70b-cloud").is_ok());
