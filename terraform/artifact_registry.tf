@@ -7,11 +7,13 @@ resource "google_artifact_registry_repository" "repo" {
 
   cleanup_policy_dry_run = false
 
+  # Two images per service: the running one and one rollback target.
+  # The ASR image is large, so every extra kept version costs storage.
   cleanup_policies {
-    id     = "keep-latest-5"
+    id     = "keep-latest-2"
     action = "KEEP"
     most_recent_versions {
-      keep_count = 5
+      keep_count = 2
     }
   }
 

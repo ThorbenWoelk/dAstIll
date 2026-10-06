@@ -96,19 +96,19 @@ variable "billing_budget_project_billing_account_ids" {
 
 variable "billing_budget_app_monthly_amount_units" {
   type        = string
-  default     = "50"
-  description = "Whole-unit monthly budget amount for all dAstIll project spend, in the billing account currency."
+  default     = "5"
+  description = "Whole-unit monthly budget amount for all dAstIll project spend, in the billing account currency. Matches the single-reader target in docs/operations/deployment.md."
 }
 
 variable "billing_budget_cloud_run_monthly_amount_units" {
   type        = string
-  default     = "10"
+  default     = "3"
   description = "Whole-unit monthly budget amount for Cloud Run spend per configured project, in the billing account currency."
 }
 
 variable "billing_budget_cloud_storage_monthly_amount_units" {
   type        = string
-  default     = "5"
+  default     = "1"
   description = "Whole-unit monthly budget amount for Cloud Storage spend per configured project, in the billing account currency."
 }
 

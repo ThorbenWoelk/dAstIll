@@ -158,9 +158,9 @@ pass.
 
 | Config key                                          | Default                                        | Used for                                          |
 | --------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------- |
-| `billing_budget_app_monthly_amount_units`           | `50`                                           | Monthly all-service alert budget                  |
-| `billing_budget_cloud_run_monthly_amount_units`     | `10`                                           | Monthly Cloud Run service-scoped alert budget     |
-| `billing_budget_cloud_storage_monthly_amount_units` | `5`                                            | Monthly Cloud Storage service-scoped alert budget |
+| `billing_budget_app_monthly_amount_units`           | `5`                                            | Monthly all-service alert budget                  |
+| `billing_budget_cloud_run_monthly_amount_units`     | `3`                                            | Monthly Cloud Run service-scoped alert budget     |
+| `billing_budget_cloud_storage_monthly_amount_units` | `1`                                            | Monthly Cloud Storage service-scoped alert budget |
 | `billing_budget_thresholds`                         | `50%`, `80%`, `100%` actual, `100%` forecasted | Alert thresholds                                  |
 
 Billing budgets are alerts only. They do not cap, stop, or throttle spend.
