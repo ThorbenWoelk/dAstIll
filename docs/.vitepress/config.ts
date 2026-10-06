@@ -15,7 +15,7 @@ export default defineConfig({
     nav: [
       { text: "Overview", link: "/" },
       { text: "Architecture", link: "/architecture/overview" },
-      { text: "Features", link: "/features/summarization" },
+      { text: "Features", link: "/features/reader" },
       { text: "Operations", link: "/operations/deployment" },
       { text: "Security", link: "/security/" },
     ],
@@ -39,11 +39,11 @@ export default defineConfig({
       {
         text: "Features",
         items: [
+          { text: "Reader", link: "/features/reader" },
           { text: "Summarization", link: "/features/summarization" },
           { text: "Search", link: "/features/search" },
           { text: "Chat", link: "/features/chat" },
           { text: "TTS", link: "/features/tts" },
-          { text: "Mini Reader", link: "/features/mini-reader" },
         ],
       },
       {

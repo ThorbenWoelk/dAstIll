@@ -1,25 +1,34 @@
 <script lang="ts">
-  let {
-    size = 20,
-    strokeWidth = 1.8,
-    className = "",
-  }: { size?: number; strokeWidth?: number; className?: string } = $props();
+  let { size = 16, spinning = false }: { size?: number; spinning?: boolean } =
+    $props();
 </script>
 
 <svg
+  class:spinning
   width={size}
   height={size}
   viewBox="0 0 24 24"
   fill="none"
   stroke="currentColor"
-  stroke-width={strokeWidth}
+  stroke-width="1.75"
   stroke-linecap="round"
   stroke-linejoin="round"
-  class={className}
   aria-hidden="true"
 >
-  <path d="M20 11a8 8 0 0 0-14.6-4.5L4 8" />
-  <path d="M4 4v4h4" />
-  <path d="M4 13a8 8 0 0 0 14.6 4.5L20 16" />
-  <path d="M20 20v-4h-4" />
+  <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+  <path d="M20 4v7h-7" />
 </svg>
+
+<style>
+  @media (prefers-reduced-motion: no-preference) {
+    .spinning {
+      animation: spin 900ms linear infinite;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+</style>

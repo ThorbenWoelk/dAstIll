@@ -128,23 +128,15 @@ Keep those example files as the place for exhaustive keys, defaults, and inline 
 
 ## Runtime Modes
 
-`./start_app.sh` serves the live frontend by default.
+`./start_app.sh` starts the backend, the reader frontend, and the docs.
 
-There are two maintenance paths:
+- `.github/runtime-mode.env` mirrors the release workflow mode. The reader looks the same in both
+  modes; there is no separate maintenance page.
+- `LOCAL_APP_MAINTENANCE_MODE=1` skips backend startup for frontend-only work. The reader then
+  shows its error state until a backend is reachable.
 
-- `.github/runtime-mode.env` mirrors the release workflow. The script serves the
-  maintenance/minimal frontend and keeps the backend running for `dastill-mini`.
-- The local frontend-only preview mode skips backend startup and serves the maintenance frontend plus
-  docs.
-
-When either path enables maintenance mode, startup also exposes the mini reader at:
-
-```text
-http://localhost:3543/mini
-```
-
-For direct frontend-only commands, set the maintenance and support-link values in the frontend env.
-Use `frontend/.env.example` for the current key names.
+Frontend E2E specs mock the backend, so `bun run test:e2e` only needs the frontend dev server.
+Playwright starts it when nothing is listening on port `3543`.
 
 ## Backend Env
 

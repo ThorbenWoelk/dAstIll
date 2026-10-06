@@ -1,5 +1,8 @@
 # Search
 
+> The current reader frontend has no UI for this feature. The backend API described here still
+> exists.
+
 <script setup>
 const queryPathDiagram = String.raw`
 flowchart TB

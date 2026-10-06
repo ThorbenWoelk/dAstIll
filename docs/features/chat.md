@@ -1,5 +1,8 @@
 # Chat
 
+> The current reader frontend has no UI for this feature. The backend API described here still
+> exists.
+
 The chat service answers questions grounded in the indexed library. It uses:
 
 - the configured chat model, falling back to the summarizer model

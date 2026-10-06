@@ -1,15 +1,17 @@
-# dAstIll Design System
+# dAstIll Design System: Edition
 
-This file (`design.md`) is the source of truth for this repository's frontend design system and frontend engineering standards.
+This file (`design.md`) is the source of truth for the frontend design system and frontend engineering standards.
 Do not duplicate these rules in `AGENTS.md`; link here from there instead.
 
 ## Philosophy
 
-Muted, zen, minimalistic. Content first, no decorative chrome. Prefer restraint over expressiveness - if something can be removed, remove it. No emojis anywhere.
+The reader is a calm morning paper. One story at a time, newest first. When a story is read, it leaves the page and the next one takes its place.
 
-**Borders and boxes**: Use as little as possible. Prefer whitespace, typography weight, and color contrast to create separation and hierarchy. Borders and background boxes around text or UI elements should be a last resort.
-
-**No accent outline chrome**: Do not use decorative accent-colored line borders, outline rings, or thin red/orange strokes around cards, rows, pills, or spotlighted elements. The accent family may tint fills, text, or soft glows, but it must not appear as a visible perimeter stroke except when conveying a true semantic state such as danger or destructive confirmation.
+- **Content first.** The headline, standfirst, and body carry the page. Chrome stays small and quiet.
+- **Newspaper structure, not app chrome.** Separate things with rules (lines), whitespace, and type. No cards, shadows, rounded corners, or gradients.
+- **One primary action per screen.** On the reader that is "Mark as read". Everything else is a quiet text link.
+- **No emojis, no decorative icons.** Icons are minimal stroke glyphs and appear only where a word would be clumsy (refresh, external link, check).
+- **Fewer requests is a feature.** The UI never polls, streams, or sends analytics. See [Running Cost For One Reader](./docs/operations/deployment.md#running-cost-for-one-reader).
 
 ---
 
@@ -17,289 +19,171 @@ Muted, zen, minimalistic. Content first, no decorative chrome. Prefer restraint 
 
 ### Typography
 
-- **Body**: [Manrope](https://fonts.google.com/specimen/Manrope) (system-ui fallback), `-webkit-font-smoothing: antialiased`
-- **Headings / Serif Moments**: [Fraunces](https://fonts.google.com/specimen/Fraunces) (`font-variation-settings: "opsz" 72`, `letter-spacing: -0.02em`, `font-weight: 600`)
-- **UI Labels / Tabs / Tooltips**: Uppercase, `font-weight: 700`, `letter-spacing: 0.05-0.08em`, `font-size: 10-11px`
+Fonts are self-hosted through `@fontsource` packages and imported in `src/routes/+layout.svelte`.
 
-### Color System
+| Role | Font | Use |
+| --- | --- | --- |
+| Serif (`--serif`) | Libre Caslon Text 400, 400 italic, 700 | Masthead title, headlines, standfirst (italic), body |
+| Sans (`--sans`) | Libre Franklin 400, 600, 700 | Dateline, kickers, labels, bylines, buttons, the "At a glance" list |
 
-All colors are CSS custom properties (`var(--token)`). Never use hardcoded hex values.
+- **Labels** (`.label`): sans, 11px, weight 700, uppercase, `letter-spacing: 0.12em`. Used for kickers, section names, and box headings.
+- **Headlines**: serif 700, 32px on phones, 48px from 640px, tight leading (`1.05`-`1.1`), `text-wrap: balance`.
+- **Standfirst**: serif italic, 19px on phones, 22px from 640px, `--ink-soft`.
+- **Body**: serif 17px, `line-height: 1.65`, left-aligned, `hyphens: auto`. Do not justify; narrow columns make rivers.
+- Body section headings (`## Key Points`) render as small uppercase sans labels, not large serif headings.
 
-**Semantic vs decorative**
+### Color
 
-- **Semantic colors** encode meaning or structure. Users should infer state or risk from them. Use them consistently: do not repurpose a semantic token for decoration, and do not use a decorative token to stand in for meaning (for example, never use `--accent` where `--danger` is required).
-  - **Content and layers**: `--foreground`, `--soft-foreground`, `--background`, `--surface`, `--surface-strong`, and related surface/overlay tokens establish hierarchy and readability.
-  - **Risk and destruction**: `--danger` (and any danger-derived tokens) only for destructive or high-risk actions and messaging.
-  - **Structure when it carries meaning**: `--border`, `--border-soft` for separation that clarifies layout or grouping, not for ornament.
+All colors are CSS custom properties on `:root` in `src/app.css`. Never hardcode a hex value in a component.
 
-- **Decorative colors** set mood, brand, and motion. They may change with `data-color` or theme without changing what the UI *means*. The **accent family** (`--accent`, `--accent-soft`, `--accent-strong`, `--accent-wash`, `--color-swatch`, and other palette-derived tokens) is primarily decorative in hue; it still signals *interactivity* or *focus*, but the chosen palette is a visual preference, not a data encoding.
-  - **Palettes** (`gold`, `ember`, `sage`, `ocean`, `sand`, `plum`): decorative swaps for the accent system.
-  - **Atmosphere**: shell gradients, subtle washes, and logo wordmark treatment use decorative contrast; they must not be the only cue for errors, success, or destructive actions.
+| Token | Newsprint (light) | Night edition (dark) | Role |
+| --- | --- | --- | --- |
+| `--paper` | `#f1ece1` | `#161513` | Page background |
+| `--paper-raised` | `#f7f3ea` | `#1e1c19` | Inputs and notices |
+| `--ink` | `#171513` | `#ece6da` | Primary text |
+| `--ink-soft` | `#57524a` | `#b9b1a4` | Standfirst, secondary text |
+| `--ink-faint` | `#6b655c` | `#9a9286` | Counts and meta lines |
+| `--rule` | `#171513` | `#ece6da` | Structural rules (2px under the masthead, above boxes) |
+| `--hairline` | `#d6cfc1` | `#38342e` | Light separators between list items and columns |
+| `--kicker` | `#a23b2c` | `#e88a72` | Channel kicker, active section, focus ring |
+| `--press` / `--press-ink` | ink on paper | paper on ink | The filled primary button |
+| `--danger` | same as kicker | same as kicker | Destructive confirmations and errors |
 
-| Token               | Light Value                | Dark Value             | Role                 |
-| ------------------- | -------------------------- | ---------------------- | -------------------- |
-| `--background`      | `#faf9f6` (warm off-white) | `#111315` (near-black) | Page shell only      |
-| `--foreground`      | `#1a1a1a`                  | `#f4efe9` (warm white) | Primary text         |
-| `--surface`         | `#ffffff`                  | `#181b1f`              | Panels, cards        |
-| `--soft-foreground` | `#5a5a5a` (mid-gray)       | `#b8b1aa` (warm taupe) | Secondary text       |
-| `--accent`          | `#b5851f` (gold)           | `#f0c36a` (gold)       | Interactive emphasis (hue is decorative) |
-| `--border`          | warm gray                  | cool-dark gray         | Structural separation (semantic when it clarifies layout) |
-| `--danger`          | `#d25a5a`                  | `#ff8f8f`              | Destructive / risk (semantic) |
+- Dark mode follows `prefers-color-scheme`. There is no in-app theme switch.
+- Every text color must reach WCAG AA (4.5:1) on `--paper`. Check new tokens before adding them.
+- The kicker red is the only accent. Do not introduce a second hue.
 
-**Palettes**: `gold` (default), `ember`, `sage`, `ocean`, `sand`, `plum`. Each has light/dark variants auto-computed into `data-color` on `:root`.
+### Spacing
 
-**Monochrome subtrees**: a route may opt out of the palette entirely by re-aliasing both the accent family and the palette-mixed tokens (`--muted`, `--border`, `--border-soft`) at its shell selector. Do this at the scope boundary, never inside components, so the opt-out stays a one-file decision. `/mini` is the reference implementation.
+- 4px grid: `--space-1` (4) through `--space-8` (64). Use the tokens, not raw pixel values.
+- Page column: `--column` (1120px), side padding `--space-4` on phones and `--space-7` from 640px.
+- Touch targets are at least `--touch` (44px). The primary button is 52px tall on phones.
 
-### Spacing & Radius
+### Rules and boxes
 
-- **Base Spacing**: `4px` (xs), `8px` (sm), `16px` (md), `24px` (lg), `32px` (xl)
-- **Border Radius**: `8px` (sm), `12px` (md), `20px` (lg), `9999px` (full)
-- **Standard**: `rounded-full` for pill buttons/tags, `--radius-md` for cards and panels.
-- **4-point Grid Rule**: All layout spacing must land on 4px increments. Prefer `--space-*` tokens or Tailwind spacing utilities that resolve to 4px steps, and avoid fractional spacing utilities like `.5` unless there is a deliberate, documented exception.
+- 2px `--rule` under the masthead, above the "At a glance" box, and above "Also in this edition".
+- 1px `--rule` under the section bar and above the phone read bar.
+- 1px `--hairline` between list items, around the byline, and between body columns.
+- No `border-radius`, no `box-shadow`, no translucent overlays.
 
 ### Icons
 
-Icons are **minimal stroke glyphs** only. No emoji, no filled decorative pictograms, and no one-off SVGs inlined in feature components when an existing icon fits.
+Minimal stroke glyphs in `src/lib/components/icons/`: `viewBox="0 0 24 24"`, `fill="none"`, `stroke="currentColor"`, round caps and joins, `aria-hidden="true"`. Icon-only buttons need an `aria-label` and a `title`.
 
-Prefer minimal monochrome icon controls over text labels for compact app chrome. Text remains appropriate inside forms, menus, empty states, and destructive/confirmation actions, but repeated toolbar commands should lead with the shared icon system and expose meaning through `aria-label` plus `[data-tooltip]` when needed.
+Current set: `CheckIcon`, `RefreshIcon`, `ExternalLinkIcon`. Reuse before adding.
 
-**Location**: `frontend/src/lib/components/icons/` (Svelte components, one file per icon).
+---
 
-**Shape rules**
+## Components
 
-- `viewBox="0 0 24 24"`, `fill="none"`, `stroke="currentColor"` so color follows text (`--foreground`, `--soft-foreground`, `--accent`, etc.).
-- `stroke-linecap="round"` and `stroke-linejoin="round"` for a consistent soft line look.
-- Default `aria-hidden="true"`; pair with visible labels or `aria-label` on the control when meaning is not obvious from text alone.
-- Optional props: `size`, `strokeWidth`, `className` / `class` (match existing components when adding new ones).
-
-**Standard set** (reuse before adding)
-
-| Component | Role |
+| Component | Job |
 | --- | --- |
-| `ChevronIcon` | Disclosure, back/forward, expand/collapse (`direction`: left, right, down). |
-| `CheckCircleIcon` | Read/handled state and circular completion actions. |
-| `CheckIcon` | Success, selected, done. |
-| `CloseIcon` | Dismiss, clear input. |
-| `CopyIcon` | Copy to clipboard. |
-| `ExternalLinkIcon` | Opens elsewhere / external URL. |
-| `FilterIcon` | Filter or narrow list results; use for read/unread filters too. |
-| `HighlighterIcon` | Highlights mode / annotation affordance. |
-| `MenuIcon` | Navigation/options menu trigger; never use as the filter trigger. |
-| `RefreshIcon` | Regenerate, refresh, retry. |
-| `SearchIcon` | Search fields and search affordances. |
-| `TrashIcon` | Delete / destructive remove. |
+| `Masthead` | Dateline (long date from 640px, short date on phones) with status and actions, the `dAstIll` title, the 2px rule, and an optional nav slot. Every screen uses it. |
+| `SectionNav` | "Front page" plus one button per channel with unread counts. Scrolls sideways on phones, wraps and centers from 640px. The active section uses `aria-current="page"` and the kicker color. |
+| `StoryArticle` | Kicker, headline, standfirst, byline, "At a glance" box, and body. Body is one column on phones and two columns from 960px. |
+| `ReadBar` | "Mark as read" and, after a read, an "Undo" button. Sticky at the bottom on phones, inline after the article from 960px. |
+| `AlsoInEdition` | The next six stories in the section. Each one is a button that makes it the lead. Below the article on phones, a sticky right column from 960px. |
+| `EditionNotice` | A non-blocking message (a failed request) with Dismiss. |
+| `SignIn` | The signed-out page under the masthead. |
 
-New icons should match this stroke style and live in the same folder so the UI stays visually one system.
+Shared button styles live in `src/app.css`: `.press` (filled primary) and `.text-button` (underlined quiet link). Components add layout only.
 
----
+### Summary layout
 
-## Component Design
+`src/lib/edition/summary.ts` maps the generated summary format onto the page:
 
-### AppShell (Unified Layout)
+- `## Overview` becomes the standfirst. A long overview (over 400 characters) stays in the body and only its first sentence leads.
+- `## At a glance` becomes the boxed list.
+- Every other section is the body, in order.
+- Summaries in another shape render whole as the body.
 
-All pages (Workspace, Queue, Highlights) must share the same `AppShell` structure:
-
-1. **Header**: Logo (left) | Nav Pills (center) | Actions (right: Search toggle, Theme, Guide).
-2. **Main Layout**: Max 3 slots: Navigation Sidebar | List Column | Detail View.
-3. **Responsive**: Fixed header and bottom tab bar on mobile.
-
-### Navigation
-
-- **Page Nav (Header)**: Rounded pills, uppercase, tracking-wide.
-- **Content Tabs**: `Toggle.svelte` (pill style). Avoid underline tabs.
-- **Mobile Bottom Bar**: Shared app-level navigation for **Workspace | Queue | Highlights | Settings**.
-
-### Shortcut Naming
-
-- Shortcut hints must follow one clear grammar across the app.
-- **Navigation** uses numbers: `Cmd/Ctrl + 1..6`.
-- **Content modes / tabs** use mnemonic letters: for example `I`, `S`, `H`, `T`.
-- **Inline actions** use symbols only. Do not assign letter shortcuts to action-row buttons when a symbol shortcut is available.
-- Keep hint labels visually short. Prefer one-character hint chips over wordy badges.
-- When adding a new shortcut, update both the visible hint and the actual keyboard handler in the same change.
+Summary markdown is model output. Always render it through `renderMarkdown` (`marked` plus DOMPurify). It fails closed to plain text when the sanitizer is unavailable.
 
 ---
 
-## Interaction Model
+## Interaction
 
-- **Hover**: `--accent-wash` background + nudge color toward `--foreground`.
-- **Active/Selected**: `--accent-soft` background + `--accent-strong` text.
-- **Animations**: `fade-in` (500ms, translateY 10px → 0). Stagger increments of 80ms.
-- **Tooltips**: `[data-tooltip]` attribute. 10px uppercase bold, fully opaque background. No transparency and no blur/filter effects.
-- **Popups / Modals / Overlays**: Must be fully opaque surfaces. Do not use transparent backgrounds, frosted/glass effects, `backdrop-filter`, or `-webkit-backdrop-filter`.
-
-### Opaque Overlay Rule (Strict)
-
-- Every popup, popover, drawer, tour card, and modal must render with **opaque** colors only.
-- Backdrops/scrims must also be opaque - no alpha colors (`rgba`, `/xx` opacity utility backgrounds, `transparent`, or color-mix results that introduce transparency).
-- Use solid design tokens for these layers: `--surface`, `--surface-strong`, `--surface-overlay`, `--surface-overlay-strong`, `--tooltip-bg`.
-- If a popup-style component needs depth, use spacing and solid tone contrast first; avoid translucency tricks.
-
-### Overlay Layer Contract
-
-- Do not introduce raw mobile overlay `z-index` values in feature components when the layer already belongs to the shared shell contract. Use the root overlay tokens in `frontend/src/app.css` instead.
-- Treat `position: fixed` UI as **overlay-bearing**. It must not live under a transformed ancestor unless that anchoring is explicitly intended.
-- If a mobile header, shell, drawer, or panel uses animation, prefer opacity-only entry animation when a descendant popup/popover/drawer must stay viewport-anchored.
-- Any new mobile top-bar popup or drawer needs one Playwright assertion that tap/click makes the overlay visible above the browse/content shell.
-
-### Filter Controls
-
-Use `FilterIcon` for every filter trigger across the app, including compact read/unread controls such as "hide read". Do not use search icons for filters, and do not use a menu/burger icon as the direct filter trigger.
-
-Filter triggers must behave as status indicators:
-
-- **Idle**: minimal monochrome stroke icon with a 44x44px touch target on mobile.
-- **Active**: add visible weight with a numeric badge or equivalent dot when only one filter can be active. Prefer a count badge when multiple filter dimensions can be active.
-- **Focus/Press**: use the standard hover/focus background treatment without changing layout size.
-
-Selection surfaces:
-
-- Use a dropdown/popover for simple desktop filters with one to three groups.
-- Use a drawer or sheet for complex mobile filters with many categories. Simple mobile filters may use a compact popover when it remains easy to dismiss.
-- Use radio buttons or mutually exclusive menu items for one-of-many choices; use checkboxes only when multiple values can be selected at once.
-- Prefer live filtering for small local lists and desktop flows. Use batch apply/reset controls only when mobile space or expensive queries make live updates costly.
-
-Active feedback and reset:
-
-- Never hide the fact that filters are on. Use a badge on the trigger and visible chips or concise status text near the filtered list when space allows.
-- Always provide a clear/reset action for active filters.
-- Empty states caused by filters must say that the current filters produced no results and provide a clear filters action.
+- **Mark as read** is optimistic: the story leaves at once, then the request is sent. A failure restores it and shows a notice.
+- **Undo** restores the last finished story as the lead. Undo requests wait for the read request, so they never race.
+- Keyboard: `R` marks the lead story read, `U` undoes. Keys are ignored while typing in a field.
+- After reading, undoing, or picking a story, the page scrolls to the top.
+- The newly printed story fades and rises 6px (`.print-in`, 360ms). Respect `prefers-reduced-motion`.
+- Loading: show the stored edition at once. Without one, show a short italic line ("Printing today's edition…"), not a spinner.
+- Empty and error states are centered italic text with one clear next action.
 
 ---
 
 ## Mobile-First Patterns
 
-### CSS Breakpoint Rule
+### Breakpoints
 
-Write base styles for mobile. Use `@media (min-width: 640px)` to add desktop enhancements. Never use `max-width` media queries for responsive layout.
+Write base styles for phones. Add layout with `@media (min-width: 640px)` and `@media (min-width: 960px)`. Never use `max-width` media queries for layout.
 
-### One Codebase, Two Sizes
+| Width | Changes |
+| --- | --- |
+| base | One column. Sticky read bar. Rail below the article. Short dateline. |
+| 640px | Long dateline, larger title and headline, centered section bar, two-column glance list. |
+| 960px | Rail beside the article, two-column body, read bar inline. |
 
-Breakpoints change **layout**, never **behavior**. A feature must work identically on mobile and desktop or it should not ship.
+### One codebase, two sizes
 
-- Do not branch on viewport width in JavaScript (`isMobile`, `matchMedia` feature flags, route forks). CSS owns the size story.
-- Same components, same state, same event handlers at every breakpoint. Desktop is a CSS-only re-layout of the mobile tree (flex direction swap, grid row↔column, `display: none` for chrome that belongs to one size).
-- When a mobile affordance (bottom bar, bottom sheet) has no desktop home, hide it with a media query and let the remaining controls (keyboard, sidebar, inline header actions) cover the intent. Do not duplicate logic into a desktop-only component.
-- Axis-sensitive effects (e.g. `scrollIntoView`) read the computed CSS (flex direction, container orientation) rather than the viewport. The CSS remains the source of truth.
+Breakpoints change layout, never behavior. Do not branch on viewport width in JavaScript. The same components, state, and handlers run at every size. CSS owns the size story.
 
-The mini reader is the reference implementation - see [docs/features/mini-reader.md](./docs/features/mini-reader.md).
+### Safe area
 
-### Bottom Bar
-
-Primary mobile actions go in a fixed bottom bar (`position: fixed; bottom: 0`). Use `z-index: var(--z-mobile-tab-bar)` and respect `env(safe-area-inset-bottom)`. Hide on desktop with `@media (min-width: 640px) { display: none }`. All touch targets must be 44px minimum.
-
-### Bottom Sheet
-
-Secondary selections (channel pickers, filter groups) use an opaque bottom sheet that slides up from the bottom. The sheet has a drag handle, opaque `--surface` background, and `--surface-overlay-strong` backdrop. Max height `60dvh`. Dismiss via backdrop tap, Escape key, or explicit close button. Do not use native `<select>` dropdowns or hamburger menus for these surfaces on mobile.
-
-### Swipe Navigation
-
-Use the `swipeNavigation` action (`frontend/src/lib/mini/use-swipe-navigation.ts`) for horizontal swipe between content items. Default threshold: 60px. Ignores swipes starting within 40px of the left edge (iOS back gesture). Rejects diagonal swipes. Does not interfere with vertical scrolling.
-
-### Skeleton Loading
-
-Use content-shaped skeleton screens (matching the layout of the content being loaded) over spinner or pulse animations. Skeleton elements use `background: var(--muted)` with `animation: pulse-subtle`.
-
-### Safe Area
-
-All fixed-position UI (top bars, bottom bars, sheets) must respect device safe areas using `env(safe-area-inset-top)` and `env(safe-area-inset-bottom)`. Use `max()` to combine with standard padding: `padding-bottom: max(var(--space-sm), env(safe-area-inset-bottom))`.
-
----
-
-## Design Debt (P0/P1)
-
-Key priorities:
-
-1. [ ] **Unify Shells**: Align Highlights and Queue pages with the 3-column Workspace shell.
-2. [ ] **Common Mobile Nav**: Implement a single, fixed bottom tab bar across all pages.
-3. [ ] **Tab Parity**: Standardize all tab-like controls to use the rounded pill style.
-4. [ ] **Header Consistency**: Lock the logo/nav/actions layout across all pages.
+Fixed or sticky UI respects `env(safe-area-inset-top)` and `env(safe-area-inset-bottom)` with `max()`.
 
 ---
 
 ## Engineering Standards
 
-### File Limits
+### File limits
 
-- Max line count per file should be **800**. If a file exceeds this, it must be modularized.
-- For frontend files, **500+ lines** is already a refactor candidate even if it is still below the hard limit. Treat that as a prompt to look for natural seams before adding more code.
+- Hard limit: 800 lines per file. Frontend files over 500 lines are a refactor candidate.
 
-### Svelte State Management
+### State
 
-- When a Svelte component or `.svelte.ts` controller exposes setter methods or action methods for reactive state, treat those methods as the only valid write path. Do not mutate the backing `$state` variable directly from alternate code paths.
-- Keep side-effectful state transitions centralized. If changing a value must also sync the URL, invalidate cache, emit analytics, or notify a parent, that logic belongs in the setter/action, not in scattered direct assignments.
-- Keep UI/domain state in its canonical type across the app. Only translate it to transport/API shapes at the boundary where the request is made.
+- Reader state lives in `EditionReader` (`src/lib/edition/reader.svelte.ts`). Its methods are the only write path; components read fields and derived values.
+- Keep pure logic in plain `.ts` modules (`stories.ts`, `summary.ts`, `printing.ts`) so `bun test` can cover it without the Svelte compiler.
+- When a function returns `$state` or `$derived`, wrap it in getters and setters to keep reactivity.
+- Keep UI types (`Story`, `Section`) separate from transport types (`MiniSummaryItem`). Convert at the API boundary.
 
-### Frontend Clean Code Rules
+### Requests
 
-- Keep `.svelte.ts` controllers/store modules to a single concern. If one file mixes filter state, CRUD flows, preview loading, and route sync, split those into focused modules with an explicit context or API.
-- Prefer extracting render-only Svelte components before moving more behavior into state modules. If the same markup pattern appears in multiple branches, create a presentational component and pass callbacks/data in.
-- In Svelte 5, prefer snippet props and `{@render ...}` over legacy `<slot>` APIs in new code. Do not introduce deprecated slot patterns during refactors.
-- Do not put TypeScript type annotations or casts directly inside template event expressions when avoidable. Move non-trivial handlers into the `<script>` block and type them there.
-- When a child component needs to cooperate with parent-owned focus or element refs, use an explicit prop/callback contract rather than duplicating ownership of the ref.
-- Repeated UI sections should be extracted with the smallest useful surface area. Keep parent components responsible for route-specific orchestration and children responsible for rendering.
-- When a component grows because it handles multiple list modes or layouts, split by mode-specific content blocks rather than keeping large `if/else` trees in one file.
-- Treat duplicated state representations as a code smell. One domain concept should have one canonical representation through the UI layer.
-- After refactoring large frontend files, rerun `prettier`, `svelte-check`, `eslint`, targeted unit tests, and the staged pre-commit hook before considering the cleanup verified.
+- Every backend call goes through `src/lib/api.ts`.
+- No polling, no `EventSource`, no analytics. Reload on demand or when the tab returns after 30 minutes.
+- Fan-out requests run at most four at a time.
 
-### Testing
+### Svelte
 
-#### Two layers, two jobs
+- Use snippet props and `{@render}`; no legacy slots.
+- Keep type annotations out of template expressions; move handlers into `<script>`.
+- Extract a presentational component before adding branches to a large one.
 
-| Layer | Runner | What it proves | What it misses |
-|-------|--------|---------------|----------------|
-| Unit (`tests/`) | `bun test` | Logic correctness - offsets, transforms, data mutations | Whether the component actually renders the output |
-| E2E (`e2e/`) | `playwright test` | Real DOM: elements present, visible, interactive | Fine-grained logic edge cases |
+---
 
-Neither layer substitutes for the other. The highlights regression - marks not rendering - is the canonical example: every utility function was tested, but no test verified that `<mark class="reader-highlight">` elements appeared in the article DOM.
+## Testing
 
-#### When each layer is required
+### Two layers, two jobs
 
-Write a **unit test** when:
+| Layer | Runner | Proves |
+| --- | --- | --- |
+| Unit (`frontend/tests/`) | `bun test` | Pure logic: ordering, sections, summary splitting, request shape, error messages |
+| E2E (`frontend/e2e/`) | `playwright test` | Real DOM: what renders, what disappears, layout at each breakpoint, sanitizing |
 
-- A pure function transforms, filters, or maps data (offsets, ranges, merging, sorting)
-- A bug was caused by incorrect logic - pin the input/output contract
+E2E specs mock the backend with `page.route` (`e2e/mock-backend.ts`) and sign in with the dev-only local session. Playwright starts the frontend dev server when nothing is running on port 3543.
 
-Write an **E2E test** when:
+### When each layer is required
 
-- A feature is visible in the DOM: an element appears, disappears, or changes state
-- A data-to-DOM pipeline exists: server data → component prop → rendered element
-- A regression was a rendering/wiring failure - the element was absent or wrong
+- A pure function that sorts, filters, maps, or parses data needs a unit test.
+- Anything observable in the DOM needs at least one E2E assertion on that element.
+- Anything that depends on a real DOM (for example HTML sanitizing) is tested in E2E, not with a simulated DOM.
+- A layout that changes at a breakpoint needs an E2E check at a phone viewport (375 x 812) and a desktop viewport (1280 x 900).
 
-#### Rendering regression rule
-
-Any feature whose correctness is observable in the DOM must have at least one E2E assertion that checks for that element.
-
-Examples:
-
-- Highlights → assert `mark.reader-highlight` is visible inside the article
-- Sidebar counts → assert the count badge text matches data
-- Floating toolbar → assert the action container appears on text selection
-
-When fixing a rendering bug, add the E2E test first so it fails before the fix, then fix, then confirm it passes.
-
-#### Responsive regression rule
-
-Mobile-first + media queries means a base rule applies at every width until a breakpoint overrides it. Editing base CSS can silently break desktop (or vice versa). The defense is a screenshot assertion at each breakpoint.
-
-Any route or component with a desktop re-layout (a `@media (min-width: 640px)` or `@media (min-width: 960px)` block that changes structure) must have a Playwright spec that:
-
-- Renders the page at a mobile viewport (e.g. `375 × 812`) and asserts a defining element is visible.
-- Renders the page at a desktop viewport (e.g. `1280 × 900`) and asserts the desktop-only element is visible (and/or the mobile-only chrome is hidden).
-
-Example checks for the mini reader: bottom bar visible at 375px; hidden at 1280px. Summary strip flex-row at 375px; flex-column sidebar at 1280px. Desktop sidebar is scrollable (internal scroll, not page scroll).
-
-When a CSS change touches a breakpoint block, run the responsive spec before committing. If you zero a base padding, remove a width, or change a flex direction — assume you broke the other breakpoint until the spec says otherwise.
-
-#### Running tests locally
+### Running tests
 
 ```bash
-# Unit tests
-cd frontend && bun test tests
-
-# E2E (requires running app on port 3543)
-cd frontend && bunx playwright test
-
-# E2E headed (watch it run)
-cd frontend && bunx playwright test --headed
+cd frontend
+bun run test        # unit
+bun run test:e2e    # E2E (set PLAYWRIGHT_CHROMIUM_PATH to use a preinstalled Chromium)
 ```

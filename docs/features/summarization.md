@@ -20,7 +20,7 @@ The summarizer reports availability to the frontend:
 - fallback activity
 - cooldown state
 
-The workspace header uses this status for the AI availability indicator.
+The backend serves this status at `/api/health/ai`.
 
 ## Summary Evaluator
 

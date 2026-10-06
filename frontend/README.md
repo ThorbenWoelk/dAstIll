@@ -1,43 +1,28 @@
-# DASTILL Frontend
+# dAstIll Reader
 
-This is the Svelte 5 frontend for dAstIll.
+The Svelte 5 frontend for dAstIll: your subscribed channels, printed as a calm morning paper.
 
-## Product Scope
+- The front page shows unread video summaries from every channel, newest first.
+- Mark a story as read and the next one takes its place. Undo brings it back.
+- Pick a section to read one channel at a time.
+- `/sections` follows or unfollows channels.
 
-- Channel workspace with customizable channel order.
-- Video list with short/long and acknowledged/unacknowledged filtering.
-- Transcript, summary, and info tabs for each video.
-- Summary quality metadata display (score and incoherence note).
-- Download queue observatory for transcript/summary processing states.
+## Develop
 
-## Local Development
-
-Install dependencies:
-
-```sh
+```bash
 bun install
+bun run dev        # http://localhost:3000, proxies /api to VITE_API_BASE
 ```
 
-Run development server:
+Env keys are listed in `.env.example`. See [../docs/operations/local-development.md](../docs/operations/local-development.md) for the shared env setup.
 
-```sh
-bun run dev
-```
+## Check
 
-Typecheck:
-
-```sh
-bun run check
-```
-
-Production build:
-
-```sh
+```bash
+bun run format:check && bun run lint && bun run check
+bun run test
+bun run test:e2e
 bun run build
 ```
 
-Preview production build:
-
-```sh
-bun run preview
-```
+Design rules: [../design.md](../design.md).
