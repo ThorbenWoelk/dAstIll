@@ -540,6 +540,7 @@ dependencies = [
  "bytes",
  "chrono",
  "flate2",
+ "google-cloud-gax",
  "google-cloud-storage",
  "google-cloud-texttospeech-v1",
  "http-body-util",

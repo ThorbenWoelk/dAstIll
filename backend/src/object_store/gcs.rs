@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use google_cloud_gax::error::rpc::Code;
 use google_cloud_storage::client::{Storage, StorageControl};
 
 use super::{ObjectStore, ObjectStoreError};
@@ -27,8 +28,14 @@ impl GcsObjectStore {
         })
     }
 
+    /// The data-plane client reports a missing object as HTTP 404. The
+    /// control-plane client (gRPC, used for metadata reads and listing)
+    /// reports it as status code `NOT_FOUND` without an HTTP status.
     fn is_not_found(err: &google_cloud_storage::Error) -> bool {
         err.http_status_code() == Some(404)
+            || err
+                .status()
+                .is_some_and(|status| status.code == Code::NotFound)
     }
 }
 
@@ -135,5 +142,30 @@ impl ObjectStore for GcsObjectStore {
                 "GCS metadata read failed for {key}: {err}"
             ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use google_cloud_gax::error::rpc::{Code, Status};
+
+    use super::GcsObjectStore;
+
+    #[test]
+    fn not_found_covers_grpc_status_from_the_control_client() {
+        let error = google_cloud_storage::Error::service(
+            Status::default()
+                .set_code(Code::NotFound)
+                .set_message("No such object"),
+        );
+        assert!(GcsObjectStore::is_not_found(&error));
+    }
+
+    #[test]
+    fn not_found_ignores_other_service_errors() {
+        let error = google_cloud_storage::Error::service(
+            Status::default().set_code(Code::PermissionDenied),
+        );
+        assert!(!GcsObjectStore::is_not_found(&error));
     }
 }

@@ -46,6 +46,7 @@ ts-rs = { version = "10.0", features = ["chrono-impl"] }
 utoipa = { version = "5", features = ["axum_extras", "chrono"] }
 
 # Google Cloud Storage
+google-cloud-gax = "1.11.0"
 google-cloud-storage = "1.15.0"
 google-cloud-texttospeech-v1 = "1.13.0"
 
