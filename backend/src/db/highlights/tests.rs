@@ -130,3 +130,32 @@ fn group_highlights_from_maps_groups_related_rows_together() {
             .any(|highlight| highlight.id == newer.id)
     );
 }
+
+#[tokio::test]
+async fn a_saved_highlight_appears_in_the_grouped_list() {
+    let store = super::super::Store::for_test().await;
+    super::super::insert_channel(&store, &sample_channel("channel-1", "Channel One"))
+        .await
+        .unwrap();
+    super::super::insert_video(&store, &sample_video("video-1", "channel-1", "Latest"))
+        .await
+        .unwrap();
+
+    let saved = super::create_highlight(
+        &store,
+        "user-1",
+        "video-1",
+        HighlightSource::Summary,
+        "a passage",
+        "before ",
+        " after",
+    )
+    .await
+    .unwrap();
+
+    let groups = super::list_highlights_grouped_for_user(&store, "user-1")
+        .await
+        .unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].videos[0].highlights[0].id, saved.id);
+}

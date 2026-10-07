@@ -77,6 +77,29 @@ test("selected text becomes a highlight that stays after a reload", async ({
   expect(backend.deletedHighlightIds).toEqual(["90071992547409930"]);
 });
 
+test("tapping Highlight works even when the tap clears the selection", async ({
+  page,
+}) => {
+  const backend = await openPaper(page, {
+    channels: CHANNELS,
+    stories: STORIES,
+  });
+  await expect(headline(page)).toBeVisible();
+  await selectInArticle(page, "Detail about Why small teams");
+  const button = page.getByRole("button", { name: "Highlight" });
+  await expect(button).toBeVisible();
+
+  // Phones drop the selection on touch, before the click is delivered.
+  await button.dispatchEvent("pointerdown");
+  await page.evaluate(() => document.getSelection()!.removeAllRanges());
+  await page.waitForTimeout(100);
+  await button.dispatchEvent("pointerup");
+  await button.click();
+
+  await expect(marks(page)).toHaveText(["Detail about Why small teams"]);
+  await expect.poll(() => backend.highlights.length).toBe(1);
+});
+
 test("a highlight can span paragraphs", async ({ page }) => {
   const backend = await openPaper(page, {
     channels: CHANNELS,
