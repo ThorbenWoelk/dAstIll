@@ -77,6 +77,11 @@ as a security hardening gap.
 
 All worker loops skip scheduled work when there is no recent user activity.
 
+The summary evaluation worker reads every stored summary only in a full scan. It keeps the list of
+summaries that need an evaluation and works through it. A new full scan runs only after the list
+is used up, and only when the number of stored summaries changed or `30m` passed since the last
+scan. Between scans, each round costs one listing call.
+
 ## Scheduled Catch-Up
 
 | Setting            | Value                                                    | Source                          |

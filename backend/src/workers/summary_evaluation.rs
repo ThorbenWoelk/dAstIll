@@ -7,13 +7,91 @@ use crate::{
     },
     state::AppState,
 };
+use std::collections::VecDeque;
+use std::time::Instant;
 use tracing::Instrument;
 
 use super::{
-    PollBackoffState, SUMMARY_EVAL_IDLE_POLL_INTERVAL, SUMMARY_EVAL_IDLE_POLL_MAX_INTERVAL,
-    SUMMARY_EVAL_POLL_BACKOFF, SUMMARY_EVAL_POLL_INTERVAL, SUMMARY_EVAL_SCAN_LIMIT,
-    sleep_with_backoff,
+    PollBackoffState, SUMMARY_EVAL_FULL_SCAN_INTERVAL, SUMMARY_EVAL_IDLE_POLL_INTERVAL,
+    SUMMARY_EVAL_IDLE_POLL_MAX_INTERVAL, SUMMARY_EVAL_POLL_BACKOFF, SUMMARY_EVAL_POLL_INTERVAL,
+    SUMMARY_EVAL_SCAN_LIMIT, sleep_with_backoff,
 };
+
+/// Video ids waiting for an evaluation, from the last full scan of stored summaries.
+///
+/// A full scan reads every stored summary. It runs only when this list is used up and
+/// either the number of stored summaries changed (a summary was added or deleted) or
+/// [`SUMMARY_EVAL_FULL_SCAN_INTERVAL`] passed (a summary may have been replaced in place).
+#[derive(Debug, Default)]
+pub(super) struct PendingEvaluations {
+    video_ids: VecDeque<String>,
+    last_full_scan: Option<(Instant, usize)>,
+}
+
+impl PendingEvaluations {
+    pub(super) fn is_empty(&self) -> bool {
+        self.video_ids.is_empty()
+    }
+
+    pub(super) fn needs_full_scan(&self, summary_count: usize, now: Instant) -> bool {
+        if !self.video_ids.is_empty() {
+            return false;
+        }
+        match self.last_full_scan {
+            None => true,
+            Some((scanned_at, count_at_scan)) => {
+                summary_count != count_at_scan
+                    || now.duration_since(scanned_at) >= SUMMARY_EVAL_FULL_SCAN_INTERVAL
+            }
+        }
+    }
+
+    pub(super) fn replace(&mut self, video_ids: Vec<String>, summary_count: usize, now: Instant) {
+        self.video_ids = video_ids.into();
+        self.last_full_scan = Some((now, summary_count));
+    }
+
+    pub(super) fn take(&mut self, limit: usize) -> Vec<String> {
+        let count = limit.min(self.video_ids.len());
+        self.video_ids.drain(..count).collect()
+    }
+}
+
+/// Refill `pending` with a full scan when it is used up and storage changed or the
+/// rescan interval passed. Otherwise only counts the stored summaries, or does nothing.
+async fn refresh_pending_evaluations(
+    store: &Store,
+    pending: &mut PendingEvaluations,
+) -> Result<(), StoreError> {
+    if !pending.is_empty() {
+        return Ok(());
+    }
+    let summary_count = db::count_summaries(store).await?;
+    let now = Instant::now();
+    if pending.needs_full_scan(summary_count, now) {
+        let video_ids = db::list_video_ids_pending_quality_eval(store).await?;
+        tracing::info!(
+            summaries = summary_count,
+            pending = video_ids.len(),
+            "summary evaluation scanned stored summaries"
+        );
+        pending.replace(video_ids, summary_count, now);
+    }
+    Ok(())
+}
+
+async fn load_evaluation_jobs(
+    store: &Store,
+    video_ids: Vec<String>,
+) -> Result<Vec<SummaryEvaluationJob>, StoreError> {
+    let mut jobs = Vec::with_capacity(video_ids.len());
+    for video_id in video_ids {
+        if let Some(job) = db::load_summary_evaluation_job(store, &video_id).await? {
+            jobs.push(job);
+        }
+    }
+    Ok(jobs)
+}
 
 pub(super) fn should_run_summary_evaluation(
     evaluator_status: AiStatus,
@@ -299,6 +377,7 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                 "summary evaluation worker started"
             );
             let mut backoff_state = PollBackoffState::default();
+            let mut pending = PendingEvaluations::default();
 
             loop {
                 if state.user_activity.is_idle() {
@@ -307,23 +386,14 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                     continue;
                 }
 
-                let queue = {
-                    let conn = state.db.connect();
-                    db::list_summaries_pending_quality_eval(&conn, SUMMARY_EVAL_SCAN_LIMIT)
-                        .await
-                        .map_err(|err| err.to_string())
-                };
+                let conn = state.db.connect();
+                if let Err(err) = refresh_pending_evaluations(&conn, &mut pending).await {
+                    tracing::error!(error = %err, "summary evaluation worker failed to load queue");
+                    sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
+                    continue;
+                }
 
-                let queue = match queue {
-                    Ok(rows) => rows,
-                    Err(err) => {
-                        tracing::error!(error = %err, "summary evaluation worker failed to load queue");
-                        sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
-                        continue;
-                    }
-                };
-
-                if queue.is_empty() {
+                if pending.is_empty() {
                     sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
                     continue;
                 }
@@ -351,6 +421,20 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                             "summary evaluation worker could not load vocabulary replacements"
                         );
                         Vec::new()
+                    }
+                };
+
+                let queue = match load_evaluation_jobs(
+                    &conn,
+                    pending.take(SUMMARY_EVAL_SCAN_LIMIT),
+                )
+                .await
+                {
+                    Ok(jobs) => jobs,
+                    Err(err) => {
+                        tracing::error!(error = %err, "summary evaluation worker failed to load jobs");
+                        sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
+                        continue;
                     }
                 };
 

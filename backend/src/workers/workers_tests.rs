@@ -533,3 +533,69 @@ mod summary_evaluation_lifecycle {
         assert_eq!(summary_status(&store).await, ContentStatus::Ready);
     }
 }
+
+mod pending_evaluations {
+    use std::time::{Duration, Instant};
+
+    use super::super::SUMMARY_EVAL_FULL_SCAN_INTERVAL;
+    use super::super::summary_evaluation::PendingEvaluations;
+
+    fn ids(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn first_round_scans() {
+        let pending = PendingEvaluations::default();
+        assert!(pending.needs_full_scan(10, Instant::now()));
+    }
+
+    #[test]
+    fn no_rescan_while_ids_are_left() {
+        let start = Instant::now();
+        let mut pending = PendingEvaluations::default();
+        pending.replace(ids(&["a", "b"]), 10, start);
+
+        let later = start + SUMMARY_EVAL_FULL_SCAN_INTERVAL + Duration::from_secs(1);
+        assert!(!pending.needs_full_scan(11, later));
+    }
+
+    #[test]
+    fn no_rescan_when_nothing_changed_and_interval_not_passed() {
+        let start = Instant::now();
+        let mut pending = PendingEvaluations::default();
+        pending.replace(Vec::new(), 10, start);
+
+        assert!(!pending.needs_full_scan(10, start + Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn rescans_when_summary_count_changes() {
+        let start = Instant::now();
+        let mut pending = PendingEvaluations::default();
+        pending.replace(Vec::new(), 10, start);
+
+        assert!(pending.needs_full_scan(11, start + Duration::from_secs(1)));
+        assert!(pending.needs_full_scan(9, start + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn rescans_after_interval() {
+        let start = Instant::now();
+        let mut pending = PendingEvaluations::default();
+        pending.replace(Vec::new(), 10, start);
+
+        assert!(pending.needs_full_scan(10, start + SUMMARY_EVAL_FULL_SCAN_INTERVAL));
+    }
+
+    #[test]
+    fn take_returns_ids_in_order_and_empties_the_list() {
+        let mut pending = PendingEvaluations::default();
+        pending.replace(ids(&["a", "b", "c"]), 3, Instant::now());
+
+        assert_eq!(pending.take(2), ids(&["a", "b"]));
+        assert_eq!(pending.take(2), ids(&["c"]));
+        assert!(pending.is_empty());
+        assert!(pending.take(2).is_empty());
+    }
+}

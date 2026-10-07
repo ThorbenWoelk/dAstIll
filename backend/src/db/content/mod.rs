@@ -441,76 +441,113 @@ pub async fn delete_transcript(store: &Store, video_id: &str) -> Result<bool, St
     Ok(exists)
 }
 
-/// Summaries that still need an evaluation, at most `limit`.
+/// Video ids of all summaries that still need an evaluation.
+///
+/// This reads every stored summary, so call it rarely and work through the returned
+/// list with [`load_summary_evaluation_job`].
 ///
 /// Order: summaries with fewer failed evaluation attempts first, then newer videos
 /// first. A few summaries that keep failing can no longer block everything else.
-pub async fn list_summaries_pending_quality_eval(
-    store: &Store,
-    limit: usize,
-) -> Result<Vec<SummaryEvaluationJob>, StoreError> {
+pub async fn list_video_ids_pending_quality_eval(store: &Store) -> Result<Vec<String>, StoreError> {
     let summaries: Vec<Summary> = store.load_all("summaries/").await?;
     let failures = load_evaluation_failures(store).await?;
     let mut candidates = Vec::new();
 
     for summary in summaries {
-        if !summary_needs_quality_eval(&summary) {
+        if !summary_is_ready_for_quality_eval(&summary) {
             continue;
         }
-        if summary.content.trim().is_empty() {
+        let Some(video) = ready_video_for_quality_eval(store, &summary.video_id).await? else {
             continue;
-        }
-
-        let video = super::videos::get_video(store, &summary.video_id, false).await?;
-        let Some(video) = video else { continue };
-        if video.transcript_status != ContentStatus::Ready
-            || video.summary_status != ContentStatus::Ready
-        {
-            continue;
-        }
+        };
 
         let failed_attempts = failures
             .get(&summary.video_id)
             .filter(|meta| meta.summary_hash == hash_search_content(&summary.content))
             .map(|meta| meta.failed_attempts)
             .unwrap_or(0);
-        candidates.push((failed_attempts, video, summary));
+        candidates.push((failed_attempts, video));
     }
 
-    candidates.sort_by(|(failures_a, video_a, _), (failures_b, video_b, _)| {
+    candidates.sort_by(|(failures_a, video_a), (failures_b, video_b)| {
         failures_a
             .cmp(failures_b)
             .then_with(|| video_b.published_at.cmp(&video_a.published_at))
     });
 
+    Ok(candidates.into_iter().map(|(_, video)| video.id).collect())
+}
+
+/// The evaluation job for one video, read fresh from storage.
+///
+/// Returns `None` when the summary no longer needs an evaluation (for example it was
+/// scored or deleted since the list was made) or there is no transcript to compare to.
+pub async fn load_summary_evaluation_job(
+    store: &Store,
+    video_id: &str,
+) -> Result<Option<SummaryEvaluationJob>, StoreError> {
+    let Some(summary) = get_summary(store, video_id).await? else {
+        return Ok(None);
+    };
+    if !summary_is_ready_for_quality_eval(&summary) {
+        return Ok(None);
+    }
+    let Some(video) = ready_video_for_quality_eval(store, video_id).await? else {
+        return Ok(None);
+    };
+
+    let transcript_text = get_transcript(store, video_id)
+        .await?
+        .and_then(|t| {
+            [t.raw_text, t.formatted_markdown]
+                .into_iter()
+                .flatten()
+                .find(|text| !text.trim().is_empty())
+        })
+        .unwrap_or_default();
+    if transcript_text.trim().is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(SummaryEvaluationJob {
+        video_id: summary.video_id,
+        video_title: video.title,
+        transcript_text: transcript_text.trim().to_string(),
+        summary_content: summary.content,
+    }))
+}
+
+/// Summaries that still need an evaluation, at most `limit`, in the order of
+/// [`list_video_ids_pending_quality_eval`].
+pub async fn list_summaries_pending_quality_eval(
+    store: &Store,
+    limit: usize,
+) -> Result<Vec<SummaryEvaluationJob>, StoreError> {
     let mut results = Vec::new();
-    for (_, video, summary) in candidates {
-        let transcript_text = get_transcript(store, &summary.video_id)
-            .await?
-            .and_then(|t| {
-                [t.raw_text, t.formatted_markdown]
-                    .into_iter()
-                    .flatten()
-                    .find(|text| !text.trim().is_empty())
-            })
-            .unwrap_or_default();
-        if transcript_text.trim().is_empty() {
-            continue;
+    for video_id in list_video_ids_pending_quality_eval(store).await? {
+        if let Some(job) = load_summary_evaluation_job(store, &video_id).await? {
+            results.push(job);
         }
-
-        results.push(SummaryEvaluationJob {
-            video_id: summary.video_id,
-            video_title: video.title,
-            transcript_text: transcript_text.trim().to_string(),
-            summary_content: summary.content,
-        });
-
         if results.len() >= limit {
             break;
         }
     }
-
     Ok(results)
+}
+
+fn summary_is_ready_for_quality_eval(summary: &Summary) -> bool {
+    summary_needs_quality_eval(summary) && !summary.content.trim().is_empty()
+}
+
+async fn ready_video_for_quality_eval(
+    store: &Store,
+    video_id: &str,
+) -> Result<Option<crate::models::Video>, StoreError> {
+    let video = super::videos::get_video(store, video_id, false).await?;
+    Ok(video.filter(|video| {
+        video.transcript_status == ContentStatus::Ready
+            && video.summary_status == ContentStatus::Ready
+    }))
 }
 
 #[cfg(test)]

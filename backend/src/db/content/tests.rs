@@ -262,6 +262,50 @@ mod evaluation_storage {
     }
 
     #[tokio::test]
+    async fn evaluation_job_is_skipped_once_the_summary_is_scored() {
+        let store = Store::for_test().await;
+        add_video_with_summary(&store, "v", 1).await;
+        assert_eq!(db::count_summaries(&store).await.unwrap(), 1);
+        assert_eq!(
+            db::list_video_ids_pending_quality_eval(&store)
+                .await
+                .unwrap(),
+            vec!["v".to_string()]
+        );
+
+        let job = db::load_summary_evaluation_job(&store, "v")
+            .await
+            .unwrap()
+            .expect("unscored summary has a job");
+        assert_eq!(job.summary_content, "summary v");
+
+        db::update_summary_quality(
+            &store,
+            "v",
+            "summary v",
+            Some(8),
+            Some("Good"),
+            Some("eval-model"),
+            Some(&[]),
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            db::load_summary_evaluation_job(&store, "v")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            db::load_summary_evaluation_job(&store, "missing")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
     async fn manual_summary_clears_regeneration_state() {
         let store = Store::for_test().await;
         add_video_with_summary(&store, "v", 1).await;
