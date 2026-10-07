@@ -74,6 +74,13 @@ Minimal stroke glyphs in `src/lib/components/icons/`: `viewBox="0 0 24 24"`, `fi
 
 Current set: `CheckIcon`, `RefreshIcon`, `ExternalLinkIcon`, `HighlightIcon`. Reuse before adding.
 
+### App icon
+
+Source: [`assets/dastill-icon.svg`](./assets/dastill-icon.svg). A kicker-red play button over a heavy ink rule and two `--ink-soft` summary lines, on a square `--paper` sheet. Sharp corners, no circle, no gradient. The platform rounds the corners where it wants to.
+
+- Favicons (16 and 32px) drop the summary lines and keep only the play button and the rule, so they stay readable.
+- `frontend/static/icon-512.png` feeds [`scripts/sync_tauri_icons.sh`](./scripts/sync_tauri_icons.sh) for the desktop and Android icons.
+
 ---
 
 ## Components
