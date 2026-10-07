@@ -19,6 +19,7 @@
   --press-ink: #f1ece1;
   --press-hover: #a23b2c;
   --danger: #a23b2c;
+  --marker: #ecd78f;
 
   --serif: "Libre Caslon Text", Georgia, "Times New Roman", serif;
   --sans: "Libre Franklin", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -54,6 +55,7 @@
     --press-ink: #161513;
     --press-hover: #e88a72;
     --danger: #e88a72;
+    --marker: #5a4a22;
   }
 }
 

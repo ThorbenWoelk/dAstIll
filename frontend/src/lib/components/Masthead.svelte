@@ -5,15 +5,30 @@
     describeShortEditionDate,
   } from "$lib/edition/stories";
 
+  type PaperPage = "front-page" | "highlights" | "finished" | "sections";
+
   let {
     status = "",
+    current = null,
+    signedIn = true,
     actions,
     nav,
   }: {
     status?: string;
+    /** The page on screen; null for a single story. */
+    current?: PaperPage | null;
+    /** Signed-out readers see no page links. */
+    signedIn?: boolean;
     actions?: Snippet;
     nav?: Snippet;
   } = $props();
+
+  const PAGES: { id: PaperPage; name: string; href: string }[] = [
+    { id: "front-page", name: "Front page", href: "/" },
+    { id: "highlights", name: "Highlights", href: "/highlights" },
+    { id: "finished", name: "Finished", href: "/finished" },
+    { id: "sections", name: "Sections", href: "/sections" },
+  ];
 
   const today = new Date();
 </script>
@@ -27,9 +42,22 @@
       </time>
       {#if status}<span aria-live="polite">· {status}</span>{/if}
     </p>
-    <div class="dateline-end">
-      {@render actions?.()}
-    </div>
+    {#if signedIn}
+      <nav class="dateline-end" aria-label="Pages">
+        {@render actions?.()}
+        {#each PAGES as page (page.id)}
+          {#if page.id !== "front-page" || current !== "front-page"}
+            <a
+              class="text-button"
+              href={page.href}
+              aria-current={page.id === current ? "page" : undefined}
+            >
+              {page.name}
+            </a>
+          {/if}
+        {/each}
+      </nav>
+    {/if}
   </div>
   <a class="title" href="/">dAstIll</a>
   <div class="double-rule" aria-hidden="true"></div>
@@ -43,9 +71,10 @@
 
   .dateline {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-4);
+    gap: 0 var(--space-4);
     min-height: var(--touch);
     font-family: var(--sans);
     font-size: 12px;
@@ -63,6 +92,13 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    margin-left: auto;
+  }
+
+  .dateline-end [aria-current="page"] {
+    color: var(--ink);
+    font-weight: 700;
+    text-decoration: none;
   }
 
   .long-date {

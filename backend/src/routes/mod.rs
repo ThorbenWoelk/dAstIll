@@ -128,6 +128,8 @@ pub fn build_app(
             post(auth::redeem_mobile_auth_handoff),
         )
         .route("/api/mini", get(mini::get_mini_reader))
+        .route("/api/mini/finished", get(mini::list_finished_stories))
+        .route("/api/mini/videos/{id}", get(mini::get_story))
         .route(
             "/api/mini/videos/{id}/read",
             axum::routing::put(mini::update_mini_read_status),

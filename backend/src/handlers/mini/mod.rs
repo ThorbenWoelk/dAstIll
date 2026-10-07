@@ -56,6 +56,26 @@ pub struct MiniReaderPayload {
     pub summaries: Vec<MiniSummaryItem>,
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct FinishedStoriesParams {
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct FinishedStory {
+    #[serde(flatten)]
+    pub story: MiniSummaryItem,
+    /// When the reader marked it read.
+    pub finished_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct FinishedStoriesPayload {
+    pub stories: Vec<FinishedStory>,
+    pub has_more: bool,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateMiniReadStatusRequest {
     pub read: bool,
@@ -341,6 +361,154 @@ pub async fn update_mini_read_status(
         read: payload.read,
         updated_at,
     }))
+}
+
+const FINISHED_PAGE_DEFAULT: usize = 30;
+const FINISHED_PAGE_MAX: usize = 50;
+
+/// Video ids the reader finished, most recently finished first.
+pub(crate) fn finished_video_ids(
+    states: &HashMap<String, UserVideoState>,
+) -> Vec<(String, DateTime<Utc>)> {
+    let mut finished: Vec<(String, DateTime<Utc>)> = states
+        .values()
+        .filter(|state| state.acknowledged)
+        .map(|state| (state.video_id.clone(), state.updated_at))
+        .collect();
+    finished.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    finished
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/mini/finished",
+    params(FinishedStoriesParams),
+    responses(
+        (status = 200, description = "Finished stories, most recently finished first", body = FinishedStoriesPayload),
+        (status = 403, description = "Sign-in required", body = String)
+    ),
+    tag = "Mini"
+)]
+pub async fn list_finished_stories(
+    State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
+    Query(params): Query<FinishedStoriesParams>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let user_id = require_authenticated_user(&access_context)?;
+    let limit = params
+        .limit
+        .unwrap_or(FINISHED_PAGE_DEFAULT)
+        .clamp(1, FINISHED_PAGE_MAX);
+    let offset = params.offset.unwrap_or(0);
+
+    let channels = db::list_user_channels(&state.db, user_id)
+        .await
+        .map_err(map_db_err)?;
+    let channel_name_by_id: HashMap<String, String> = channels
+        .iter()
+        .map(|channel| (channel.id.clone(), channel.name.clone()))
+        .collect();
+    let states = db::list_user_video_states(&state.db, user_id)
+        .await
+        .map_err(map_db_err)?;
+    let finished = finished_video_ids(&states);
+    let ids: Vec<&str> = finished.iter().map(|(id, _)| id.as_str()).collect();
+    // Video rows come from the local index: no object-store reads.
+    let videos = db::get_videos(&state.db, &ids, false)
+        .await
+        .map_err(map_db_err)?;
+
+    let readable: Vec<(&crate::models::Video, DateTime<Utc>)> = finished
+        .iter()
+        .filter_map(|(id, finished_at)| videos.get(id).map(|video| (video, *finished_at)))
+        .filter(|(video, _)| {
+            channel_name_by_id.contains_key(&video.channel_id)
+                && video.summary_status == crate::models::ContentStatus::Ready
+        })
+        .collect();
+    let has_more = readable.len() > offset.saturating_add(limit);
+    let page: Vec<(&crate::models::Video, DateTime<Utc>)> =
+        readable.into_iter().skip(offset).take(limit).collect();
+
+    let finished_at_by_id: HashMap<String, DateTime<Utc>> = page
+        .iter()
+        .map(|(video, finished_at)| (video.id.clone(), *finished_at))
+        .collect();
+    let mut page_videos: Vec<crate::models::Video> =
+        page.iter().map(|(video, _)| (*video).clone()).collect();
+    for video in &mut page_videos {
+        video.acknowledged = true;
+    }
+    let items = load_summary_items_for_videos(&state.db, page_videos, Arc::new(channel_name_by_id))
+        .await
+        .map_err(map_db_err)?;
+
+    let mut stories: Vec<FinishedStory> = items
+        .into_iter()
+        .filter_map(|story| {
+            finished_at_by_id
+                .get(&story.video_id)
+                .map(|finished_at| FinishedStory {
+                    finished_at: *finished_at,
+                    story,
+                })
+        })
+        .collect();
+    stories.sort_by(|left, right| right.finished_at.cmp(&left.finished_at));
+
+    Ok(Json(FinishedStoriesPayload { stories, has_more }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/mini/videos/{id}",
+    params(
+        ("id" = String, Path, description = "Video id")
+    ),
+    responses(
+        (status = 200, description = "One story, read or unread", body = MiniSummaryItem),
+        (status = 403, description = "Sign-in required", body = String),
+        (status = 404, description = "Story not found", body = String)
+    ),
+    tag = "Mini"
+)]
+pub async fn get_story(
+    State(state): State<AppState>,
+    Extension(access_context): Extension<AccessContext>,
+    Path(video_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let user_id = require_authenticated_user(&access_context)?;
+    let not_found = || (StatusCode::NOT_FOUND, "Story not found".to_string());
+
+    let mut video = db::get_video(&state.db, &video_id, false)
+        .await
+        .map_err(map_db_err)?
+        .ok_or_else(not_found)?;
+    let channel = db::get_user_channel(&state.db, user_id, &video.channel_id)
+        .await
+        .map_err(map_db_err)?
+        .ok_or_else(not_found)?;
+    let summary = db::get_summary(&state.db, &video_id)
+        .await
+        .map_err(map_db_err)?
+        .filter(|summary| !summary.content.trim().is_empty())
+        .ok_or_else(not_found)?;
+    let video_info = db::get_video_info(&state.db, &video_id)
+        .await
+        .map_err(map_db_err)?;
+    video.acknowledged = db::list_user_video_states(&state.db, user_id)
+        .await
+        .map_err(map_db_err)?
+        .get(&video_id)
+        .is_some_and(|state| state.acknowledged);
+
+    let channel_name_by_id = HashMap::from([(channel.id.clone(), channel.name.clone())]);
+    Ok(Json(build_mini_summary_item(
+        &video,
+        &summary,
+        video_info.as_ref(),
+        &channel_name_by_id,
+    )))
 }
 
 #[cfg(test)]

@@ -48,10 +48,11 @@ All colors are CSS custom properties on `:root` in `src/app.css`. Never hardcode
 | `--kicker` | `#a23b2c` | `#e88a72` | Channel kicker, active section, focus ring |
 | `--press` / `--press-ink` | ink on paper | paper on ink | The filled primary button |
 | `--danger` | same as kicker | same as kicker | Destructive confirmations and errors |
+| `--marker` | `#ecd78f` | `#5a4a22` | Highlighted passages, like a highlighter pen |
 
 - Dark mode follows `prefers-color-scheme`. There is no in-app theme switch.
 - Every text color must reach WCAG AA (4.5:1) on `--paper`. Check new tokens before adding them.
-- The kicker red is the only accent. Do not introduce a second hue.
+- The kicker red is the only accent. The marker yellow is only for highlights. Do not introduce another hue.
 
 ### Spacing
 
@@ -70,7 +71,7 @@ All colors are CSS custom properties on `:root` in `src/app.css`. Never hardcode
 
 Minimal stroke glyphs in `src/lib/components/icons/`: `viewBox="0 0 24 24"`, `fill="none"`, `stroke="currentColor"`, round caps and joins, `aria-hidden="true"`. Icon-only buttons need an `aria-label` and a `title`.
 
-Current set: `CheckIcon`, `RefreshIcon`, `ExternalLinkIcon`. Reuse before adding.
+Current set: `CheckIcon`, `RefreshIcon`, `ExternalLinkIcon`, `HighlightIcon`. Reuse before adding.
 
 ---
 
@@ -78,9 +79,9 @@ Current set: `CheckIcon`, `RefreshIcon`, `ExternalLinkIcon`. Reuse before adding
 
 | Component | Job |
 | --- | --- |
-| `Masthead` | Dateline (long date from 640px, short date on phones) with status and actions, the `dAstIll` title, the 2px rule, and an optional nav slot. Every screen uses it. |
+| `Masthead` | Dateline (long date from 640px, short date on phones) with status, actions, and the page links (Front page, Highlights, Finished, Sections; the current one is bold, the front page hides its own link). The links wrap under the date on phones. Then the `dAstIll` title, the 2px rule, and an optional nav slot. Every screen uses it. |
 | `SectionNav` | "Front page" plus one button per channel with unread counts. Scrolls sideways on phones, wraps and centers from 640px. The active section uses `aria-current="page"` and the kicker color. |
-| `StoryArticle` | Kicker, headline, standfirst, byline, "At a glance" box, and body. Body is one column on phones and two columns from 960px. |
+| `StoryArticle` | Kicker, headline, standfirst, byline, "At a glance" box, and body. Body is one column on phones and two columns from 960px. Given `onHighlight`, it shows a Highlight button under a text selection and marks saved highlights in `--marker`. Tapping a mark offers "Remove highlight". |
 | `ReadBar` | "Mark as read" and, after a read, an "Undo" button. Sticky at the bottom on phones, inline after the article from 960px. |
 | `AlsoInEdition` | The next six stories in the section. Each one is a button that makes it the lead. Below the article on phones, a sticky right column from 960px. |
 | `EditionNotice` | A non-blocking message (a failed request) with Dismiss. |
@@ -110,6 +111,14 @@ Summary markdown is model output. Always render it through `renderMarkdown` (`ma
 - The newly printed story fades and rises 6px (`.print-in`, 360ms). Respect `prefers-reduced-motion`.
 - Loading: show the stored edition at once. Without one, show a short italic line ("Printing today's edition…"), not a spinner.
 - Empty and error states are centered italic text with one clear next action.
+
+### Highlights
+
+- Selecting text in a story shows a **Highlight** button just under the selection. It sits below, not above, so it never covers the phone's own copy menu.
+- Highlights cover the standfirst, the "At a glance" box, and the body. The headline, byline, and buttons are marked `data-passage-skip` and are left out.
+- A highlight is saved as its text plus up to 80 characters of context on each side (`src/lib/highlights/anchoring.ts`). It finds its place again by text, ignoring whitespace differences, and uses the context to pick between repeats. A highlight that no longer matches is simply not shown.
+- Adding and removing are optimistic and roll back with a notice on failure.
+- Highlight ids are strings. They are larger than JavaScript's safe integers.
 
 ---
 

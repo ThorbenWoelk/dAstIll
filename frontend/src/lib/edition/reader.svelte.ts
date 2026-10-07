@@ -1,6 +1,5 @@
 import { fetchChannelSummaries, setStoryRead, type Channel } from "$lib/api";
 import {
-  forgetEdition,
   loadStoredEdition,
   loadStoredSection,
   storeEdition,
@@ -177,10 +176,6 @@ export class EditionReader {
 
   dismissNotice() {
     this.notice = null;
-  }
-
-  forget() {
-    forgetEdition(this.#uid);
   }
 
   #writeReadState(storyId: string, read: boolean): Promise<unknown> {

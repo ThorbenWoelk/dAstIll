@@ -10,8 +10,8 @@ use tokio::sync::RwLock;
 use crate::{
     db::QueueFilter,
     models::{
-        Channel, ChannelSnapshotPayload, SearchStatusPayload, SyncDepthPayload, Video,
-        WorkspaceBootstrapPayload,
+        Channel, ChannelSnapshotPayload, SearchStatusPayload, SyncDepthPayload, UserVideoState,
+        Video, WorkspaceBootstrapPayload,
     },
 };
 
@@ -19,6 +19,9 @@ const DEFAULT_READ_CACHE_TTL: Duration = Duration::from_secs(10);
 const SEARCH_STATUS_CACHE_TTL: Duration = Duration::from_secs(30);
 const VIDEOS_CACHE_TTL: Duration = Duration::from_secs(600);
 const VIDEO_SUGGESTION_CACHE_TTL: Duration = Duration::from_secs(600);
+/// Read states change only through `put_user_video_state`, which updates this
+/// cache in place; the TTL only bounds staleness from other writers.
+const USER_VIDEO_STATES_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 /// Maximum number of entries to keep in the cache.
 /// Prevents unbounded memory growth within Cloud Run's 512Mi limit.
 pub(crate) const MAX_CACHE_SIZE: usize = 512;
@@ -52,6 +55,7 @@ enum ReadCacheValue {
     ChannelSnapshot(ChannelSnapshotPayload),
     SyncDepth(SyncDepthPayload),
     SearchStatus(SearchStatusPayload),
+    UserVideoStates(HashMap<String, UserVideoState>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -63,6 +67,7 @@ pub enum ReadCacheKey {
     ChannelSnapshot(ChannelSnapshotCacheKey),
     ChannelSyncDepth(String, String),
     SearchStatus,
+    UserVideoStates(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -266,6 +271,43 @@ impl ReadCache {
         .await;
     }
 
+    pub async fn get_user_video_states(
+        &self,
+        user_id: &str,
+    ) -> Option<HashMap<String, UserVideoState>> {
+        self.get_typed(
+            &ReadCacheKey::UserVideoStates(user_id.to_string()),
+            ReadCacheValue::into_user_video_states,
+        )
+        .await
+    }
+
+    pub async fn set_user_video_states(
+        &self,
+        user_id: String,
+        states: HashMap<String, UserVideoState>,
+    ) {
+        self.set_typed_with_ttl(
+            ReadCacheKey::UserVideoStates(user_id),
+            states,
+            ReadCacheValue::UserVideoStates,
+            USER_VIDEO_STATES_CACHE_TTL,
+        )
+        .await;
+    }
+
+    /// Keeps a cached state map in step with a write. No-op when not cached.
+    pub async fn record_user_video_state(&self, user_id: &str, state: &UserVideoState) {
+        let mut entries = self.entries.write().await;
+        if let Some(CacheEntry {
+            value: ReadCacheValue::UserVideoStates(states),
+            ..
+        }) = entries.get_mut(&ReadCacheKey::UserVideoStates(user_id.to_string()))
+        {
+            states.insert(state.video_id.clone(), state.clone());
+        }
+    }
+
     pub async fn clear(&self) {
         self.entries.write().await.clear();
     }
@@ -387,6 +429,13 @@ impl ReadCacheValue {
     fn into_channels(self) -> Option<Vec<Channel>> {
         match self {
             Self::Channels(channels) => Some(channels),
+            _ => None,
+        }
+    }
+
+    fn into_user_video_states(self) -> Option<HashMap<String, UserVideoState>> {
+        match self {
+            Self::UserVideoStates(states) => Some(states),
             _ => None,
         }
     }

@@ -1,8 +1,10 @@
 use chrono::Utc;
 use std::collections::HashMap;
 
-use super::{MINI_STORIES_PER_CHANNEL, build_mini_summary_item, select_story_videos};
-use crate::models::{ContentStatus, Summary, Video, VideoInfo};
+use super::{
+    MINI_STORIES_PER_CHANNEL, build_mini_summary_item, finished_video_ids, select_story_videos,
+};
+use crate::models::{ContentStatus, Summary, UserVideoState, Video, VideoInfo};
 
 #[test]
 fn build_mini_summary_item_falls_back_without_video_info() {
@@ -134,4 +136,31 @@ fn select_story_videos_keeps_only_the_newest_stories() {
 
     assert_eq!(selected.len(), MINI_STORIES_PER_CHANNEL);
     assert_eq!(selected[0].id, "video-0");
+}
+
+#[test]
+fn finished_video_ids_lists_read_videos_most_recent_first() {
+    let base = Utc::now();
+    let state = |id: &str, acknowledged: bool, minutes_ago: i64| {
+        (
+            id.to_string(),
+            UserVideoState {
+                video_id: id.to_string(),
+                acknowledged,
+                updated_at: base - chrono::Duration::minutes(minutes_ago),
+            },
+        )
+    };
+    let states = HashMap::from([
+        state("older", true, 30),
+        state("unread-again", false, 1),
+        state("newest", true, 5),
+    ]);
+
+    let ids: Vec<String> = finished_video_ids(&states)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+
+    assert_eq!(ids, vec!["newest".to_string(), "older".to_string()]);
 }

@@ -1,11 +1,10 @@
 use super::{
     DELTA_SCHEMA_VERSION, LibsqlSnapshotDeltaOperation, LibsqlSnapshotDeltaRecord,
-    LibsqlSnapshotSourceState, PrefixState, apply_delta_record, checkpoint_libsql_file,
-    MANIFEST_KEY, SNAPSHOT_PREFIX, compress_gzip, decompress_gzip, prune_superseded_snapshots,
-    sha256_hex,
+    LibsqlSnapshotSourceState, MANIFEST_KEY, PrefixState, SNAPSHOT_PREFIX, apply_delta_record,
+    checkpoint_libsql_file, compress_gzip, decompress_gzip, prune_superseded_snapshots, sha256_hex,
 };
-use crate::object_store::{ObjectStore, memory::MemoryObjectStore};
 use crate::models::{CanonicalVideoRecord, ContentStatus, UserPreferences};
+use crate::object_store::{ObjectStore, memory::MemoryObjectStore};
 use chrono::TimeZone;
 use tempfile::tempdir;
 
@@ -264,7 +263,10 @@ async fn prune_superseded_snapshots_keeps_only_the_current_snapshot() {
         vec![current_key]
     );
     assert!(
-        objects.key_exists(MANIFEST_KEY).await.expect("manifest check"),
+        objects
+            .key_exists(MANIFEST_KEY)
+            .await
+            .expect("manifest check"),
         "pruning must not touch the manifest"
     );
 }

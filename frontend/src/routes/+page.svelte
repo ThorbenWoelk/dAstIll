@@ -8,14 +8,21 @@
   import SectionNav from "$lib/components/SectionNav.svelte";
   import StoryArticle from "$lib/components/StoryArticle.svelte";
   import { EditionReader } from "$lib/edition/reader.svelte";
+  import { StoryHighlights } from "$lib/highlights/story-highlights.svelte";
   import { describeStoriesLeft, FRONT_PAGE } from "$lib/edition/stories";
   import { session } from "$lib/session.svelte";
 
   // The layout renders this page only for a signed-in reader.
   const reader = new EditionReader(session.reader?.uid ?? "unknown");
+  const highlights = new StoryHighlights();
 
   onMount(() => {
     void reader.refresh();
+  });
+
+  $effect(() => {
+    const storyId = reader.lead?.id;
+    if (storyId) void highlights.show(storyId);
   });
 
   function backToTop() {
@@ -35,11 +42,6 @@
   function pickStory(storyId: string) {
     reader.pick(storyId);
     backToTop();
-  }
-
-  async function signOut() {
-    reader.forget();
-    await session.signOut();
   }
 
   function isTyping(target: EventTarget | null): boolean {
@@ -74,6 +76,7 @@
 </svelte:head>
 
 <Masthead
+  current="front-page"
   status={reader.status === "ready"
     ? describeStoriesLeft(reader.visible.length)
     : ""}
@@ -87,10 +90,6 @@
       onclick={() => reader.refresh()}
     >
       <RefreshIcon spinning={reader.refreshing} />
-    </button>
-    <a class="text-button" href="/sections">Sections</a>
-    <button type="button" class="text-button" onclick={signOut}>
-      Sign out
     </button>
   {/snippet}
   {#snippet nav()}
@@ -108,6 +107,12 @@
   <EditionNotice
     message={reader.notice}
     onDismiss={() => reader.dismissNotice()}
+  />
+{/if}
+{#if highlights.error}
+  <EditionNotice
+    message={highlights.error}
+    onDismiss={() => highlights.dismissError()}
   />
 {/if}
 
@@ -128,9 +133,15 @@
     <a class="press" href="/sections">Add a channel</a>
   </section>
 {:else if reader.lead}
+  {@const lead = reader.lead}
   <div class="spread">
     <div class="lead">
-      <StoryArticle story={reader.lead}>
+      <StoryArticle
+        story={reader.lead}
+        highlights={highlights.items}
+        onHighlight={(draft) => highlights.add(lead.id, draft)}
+        onRemoveHighlight={(id) => highlights.remove(lead.id, id)}
+      >
         {#snippet footer()}
           <ReadBar
             undoTitle={reader.lastRead?.title ?? null}

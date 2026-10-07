@@ -22,13 +22,29 @@ Press **Mark as read**, or the `R` key. The story leaves the paper and the next 
 
 On a phone the Mark as read bar stays at the bottom of the screen while you read.
 
+## Highlights
+
+Select any passage in a story and press **Highlight**. The passage is marked in yellow and stays
+marked when you come back to the story. Tap or click a highlight to remove it.
+
+**Highlights** in the top right lists every passage you marked, grouped by channel and story. Type
+in the search box to find a passage by its words, the story title, or the channel name. Select a
+story title to open the full story.
+
+## Finished stories
+
+**Finished** in the top right lists the stories you marked as read, the most recently finished
+first, grouped by the day you finished them. Open one to read it again. **Mark as unread** puts it
+back in the paper.
+
 ## Sections
 
 The front page shows every channel together. Each channel is also a section with its own unread
 count. Pick a section in the bar under the masthead to read only that channel. The reader
 remembers your choice in this browser.
 
-Use **Sections** in the top right to follow a new channel or stop following one. You can add a
+Use **Sections** in the top right to follow a new channel or stop following one. Sign out is at
+the bottom of that page. You can add a
 YouTube `@handle`, a channel link, or a podcast feed URL. Removing a section stops following the
 channel. It does not delete anything for other readers.
 

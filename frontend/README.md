@@ -5,7 +5,9 @@ The Svelte 5 frontend for dAstIll: your subscribed channels, printed as a calm m
 - The front page shows unread video summaries from every channel, newest first.
 - Mark a story as read and the next one takes its place. Undo brings it back.
 - Pick a section to read one channel at a time.
-- `/sections` follows or unfollows channels.
+- Select text to highlight it. `/highlights` lists and searches every highlight.
+- `/finished` lists stories you marked as read. `/stories/{id}` opens any story.
+- `/sections` follows or unfollows channels, and signs you out.
 
 ## Develop
 

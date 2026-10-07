@@ -817,9 +817,36 @@ pub enum HighlightSource {
     Summary,
 }
 
+/// Writes highlight ids as strings and reads both strings and numbers, so
+/// highlights stored before the switch still load.
+mod highlight_id {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(id: &i64, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&id.to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum StoredId {
+            Number(i64),
+            Text(String),
+        }
+        match StoredId::deserialize(deserializer)? {
+            StoredId::Number(id) => Ok(id),
+            StoredId::Text(text) => text.parse().map_err(serde::de::Error::custom),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct Highlight {
+    /// Sent as a string: ids exceed JavaScript's safe integer range.
+    #[serde(with = "highlight_id")]
+    #[ts(type = "string")]
+    #[schema(value_type = String)]
     pub id: i64,
     pub video_id: String,
     pub source: HighlightSource,

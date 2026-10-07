@@ -57,10 +57,12 @@ flowchart TD
   ui[Reader UI]
   mini[Mini reader APIs]
   library[Channel APIs]
-  other[Search, chat, highlights, analytics APIs]
+  highlights[Highlight APIs]
+  other[Search, chat, analytics APIs]
 
   ui --> mini
   ui --> library
+  ui --> highlights
   other -.-> none[No UI in the current reader]
 `;
 </script>
@@ -79,26 +81,33 @@ There is no Backend for Frontend (BFF).
 
 The frontend is a static SvelteKit single-page app. It renders entirely in the browser.
 
-| Path                                     | Purpose                                                    |
-| ---------------------------------------- | ---------------------------------------------------------- |
-| `src/lib/api.ts`                         | All backend requests, token header, readable errors         |
-| `src/lib/session.svelte.ts`              | Firebase Google sign-in state                               |
-| `src/lib/edition/printing.ts`            | Loads every channel and merges stories by release date      |
-| `src/lib/edition/stories.ts`             | Pure story, section, and date helpers                       |
-| `src/lib/edition/summary.ts`             | Splits a summary into standfirst, glance box, and body      |
-| `src/lib/edition/markdown.ts`            | Markdown to sanitized HTML                                  |
-| `src/lib/edition/keepsake.ts`            | Last edition and chosen section in browser storage          |
-| `src/lib/edition/reader.svelte.ts`       | Reader state: sections, lead story, mark read, undo         |
-| `src/lib/components/`                    | Masthead, section nav, story, read bar, rail, sign-in       |
-| `src/lib/bindings/`                      | Types generated from the backend by `ts-rs`                 |
+| Path                                            | Purpose                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------ |
+| `src/lib/api.ts`                                | All backend requests, token header, readable errors          |
+| `src/lib/session.svelte.ts`                     | Firebase Google sign-in state                                |
+| `src/lib/edition/printing.ts`                   | Loads every channel and merges stories by release date       |
+| `src/lib/edition/stories.ts`                    | Pure story, section, and date helpers                        |
+| `src/lib/edition/summary.ts`                    | Splits a summary into standfirst, glance box, and body       |
+| `src/lib/edition/markdown.ts`                   | Markdown to sanitized HTML                                   |
+| `src/lib/edition/keepsake.ts`                   | Last edition and chosen section in browser storage           |
+| `src/lib/edition/reader.svelte.ts`              | Reader state: sections, lead story, mark read, undo          |
+| `src/lib/highlights/anchoring.ts`               | Builds a highlight from a selection and finds it again       |
+| `src/lib/highlights/passage.ts`                 | Story text as one string; draws and clears highlight marks   |
+| `src/lib/highlights/story-highlights.svelte.ts` | Highlights of the story on screen, optimistic add and remove |
+| `src/lib/highlights/collection.ts`              | Search and remove on the grouped highlights list             |
+| `src/lib/components/`                           | Masthead, section nav, story, read bar, rail, sign-in        |
+| `src/lib/bindings/`                             | Types generated from the backend by `ts-rs`                  |
 
 ## Routing
 
-| Route       | Purpose                                                |
-| ----------- | ------------------------------------------------------ |
-| `/`         | The reader: front page or one section                  |
-| `/sections` | Follow a new channel or stop following one             |
-| `/mini`     | Old reader URL. Firebase Hosting redirects it to `/`.  |
+| Route           | Purpose                                                    |
+| --------------- | ---------------------------------------------------------- |
+| `/`             | The reader: front page or one section                      |
+| `/highlights`   | Every highlight, grouped by channel and story, with search |
+| `/finished`     | Stories marked as read, most recently finished first       |
+| `/stories/{id}` | One story, read or unread, with its highlights             |
+| `/sections`     | Follow a new channel or stop following one; sign out       |
+| `/mini`         | Old reader URL. Firebase Hosting redirects it to `/`.      |
 
 Signed-out visitors see the sign-in page on every route.
 
@@ -143,14 +152,23 @@ allow it, such as the ephemeral chat path.
 ## API Families
 
 <MermaidDiagram
-  caption="The reader uses the mini reader and channel APIs. The other API families remain in the backend without a UI."
+  caption="The reader uses the mini reader, channel, and highlight APIs. The other API families remain in the backend without a UI."
   :chart="apiFamiliesDiagram"
 />
 
 The reader uses:
 
 - `GET /api/mini` and `PUT /api/mini/videos/{id}/read`
+- `GET /api/mini/videos/{id}`: one story from a followed channel, read or unread
+- `GET /api/mini/finished?offset&limit`: finished stories, most recently finished first, with
+  `finished_at` and `has_more`
 - `GET /api/channels`, `POST /api/channels`, and `DELETE /api/channels/{id}`
+- `GET /api/highlights`, `GET` and `POST /api/videos/{id}/highlights`, and
+  `DELETE /api/highlights/{id}`. Highlight ids are sent as strings because they are larger than
+  JavaScript's safe integers.
+
+Read state per reader is cached in memory on the backend for 30 minutes and updated on every
+write, so loading the paper and the finished list does not read one storage object per story.
 
 The families below are still served by the backend. The current frontend does not call them.
 
