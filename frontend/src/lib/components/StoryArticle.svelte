@@ -8,6 +8,7 @@
     describeReleaseDay,
     readingMinutes,
     type Story,
+    type TurnDirection,
   } from "$lib/edition/stories";
   import { splitSummary } from "$lib/edition/summary";
   import {
@@ -24,12 +25,15 @@
 
   let {
     story,
+    entrance = "print",
     footer,
     highlights = [],
     onHighlight,
     onRemoveHighlight,
   }: {
     story: Story;
+    /** How a new story arrives: printed in place, or turned in from a side. */
+    entrance?: "print" | TurnDirection;
     footer?: Snippet;
     highlights?: Highlight[];
     /** Omit to turn highlighting off. */
@@ -161,7 +165,7 @@
 {#key story.id}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <article
-    class="story print-in"
+    class={["story", entrance === "print" ? "print-in" : `turn-in-${entrance}`]}
     aria-labelledby="story-headline"
     bind:this={article}
     onclick={handleClick}

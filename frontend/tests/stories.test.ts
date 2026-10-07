@@ -8,8 +8,10 @@ import {
   FRONT_PAGE,
   insertStory,
   listSections,
+  locateStory,
   readingMinutes,
   storiesInSection,
+  storyAfterFinishing,
 } from "../src/lib/edition/stories";
 import { channel, summaryItem } from "./fixtures";
 
@@ -106,6 +108,56 @@ describe("chooseLeadStory", () => {
 
   it("has no lead when the section is empty", () => {
     expect(chooseLeadStory([], null)).toBeNull();
+  });
+});
+
+describe("locateStory", () => {
+  const stories = collectUnreadStories([
+    summaryItem("n", { published_at: "2026-10-05T00:00:00Z" }),
+    summaryItem("m", { published_at: "2026-10-03T00:00:00Z" }),
+    summaryItem("o", { published_at: "2026-10-01T00:00:00Z" }),
+  ]);
+
+  it("gives the lead's place and its neighbours, newest first", () => {
+    const middle = locateStory(stories, "m");
+    expect(middle.number).toBe(2);
+    expect(middle.total).toBe(3);
+    expect(middle.previous?.id).toBe("n");
+    expect(middle.next?.id).toBe("o");
+  });
+
+  it("has nothing before the first story or after the last", () => {
+    expect(locateStory(stories, "n").previous).toBeNull();
+    expect(locateStory(stories, "o").next).toBeNull();
+  });
+
+  it("has no place for a story outside the section", () => {
+    expect(locateStory(stories, "gone")).toEqual({
+      number: 0,
+      total: 3,
+      previous: null,
+      next: null,
+    });
+  });
+});
+
+describe("storyAfterFinishing", () => {
+  const stories = collectUnreadStories([
+    summaryItem("n", { published_at: "2026-10-05T00:00:00Z" }),
+    summaryItem("m", { published_at: "2026-10-03T00:00:00Z" }),
+    summaryItem("o", { published_at: "2026-10-01T00:00:00Z" }),
+  ]);
+
+  it("leads with the newest after the first story", () => {
+    expect(storyAfterFinishing(stories, "n")).toBeNull();
+  });
+
+  it("keeps the reader's place: the next story takes the finished one's", () => {
+    expect(storyAfterFinishing(stories, "m")).toBe("o");
+  });
+
+  it("steps back after the last story", () => {
+    expect(storyAfterFinishing(stories, "o")).toBe("m");
   });
 });
 

@@ -109,6 +109,48 @@ export function chooseLeadStory(
   return visible[0] ?? null;
 }
 
+/** "next" is the older story after the lead, "previous" the newer one. */
+export type TurnDirection = "next" | "previous";
+
+/** Where the lead sits in its section, and the stories either side of it. */
+export interface StoryPosition {
+  /** Counted from 1; 0 when the story is not in the section. */
+  number: number;
+  total: number;
+  previous: Story | null;
+  next: Story | null;
+}
+
+export function locateStory(
+  visible: Story[],
+  storyId: string | null,
+): StoryPosition {
+  const index = storyId ? visible.findIndex((s) => s.id === storyId) : -1;
+  if (index < 0) {
+    return { number: 0, total: visible.length, previous: null, next: null };
+  }
+  return {
+    number: index + 1,
+    total: visible.length,
+    previous: visible[index - 1] ?? null,
+    next: visible[index + 1] ?? null,
+  };
+}
+
+/**
+ * The story that takes a finished story's place: the one after it, or the
+ * one before it when it was the last. Null means "lead with the newest",
+ * which is also the one after the first story.
+ */
+export function storyAfterFinishing(
+  visible: Story[],
+  storyId: string,
+): string | null {
+  const index = visible.findIndex((s) => s.id === storyId);
+  if (index <= 0) return null;
+  return (visible[index + 1] ?? visible[index - 1]).id;
+}
+
 const WORDS_PER_MINUTE = 220;
 
 export function readingMinutes(markdown: string): number {

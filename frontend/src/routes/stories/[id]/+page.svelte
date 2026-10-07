@@ -1,12 +1,19 @@
 <script lang="ts">
+  import { afterNavigate, goto } from "$app/navigation";
   import { page } from "$app/state";
   import { ApiError, fetchStory, setStoryRead } from "$lib/api";
   import EditionNotice from "$lib/components/EditionNotice.svelte";
   import CheckIcon from "$lib/components/icons/CheckIcon.svelte";
   import Masthead from "$lib/components/Masthead.svelte";
   import StoryArticle from "$lib/components/StoryArticle.svelte";
-  import { toStory, type Story } from "$lib/edition/stories";
+  import {
+    toStory,
+    type Story,
+    type TurnDirection,
+  } from "$lib/edition/stories";
   import { StoryHighlights } from "$lib/highlights/story-highlights.svelte";
+  import { describeWayBack } from "$lib/navigation/pages";
+  import { storySwipe } from "$lib/navigation/story-swipe";
 
   type Status = "loading" | "ready" | "missing" | "failed";
 
@@ -19,6 +26,33 @@
   let failure = $state<string | null>(null);
   let saving = $state(false);
   let notice = $state<string | null>(null);
+  /**
+   * Where "Back" leads: the page this story was opened from, "Back" when
+   * that is unknown, or null when the story was opened directly. Installed
+   * on a phone, the paper has no browser back button.
+   */
+  let wayBack = $state<string | null>(null);
+  /** Opened from a list it slides in from the right; returned to, from the left. */
+  let arrival = $state<"print" | TurnDirection>("print");
+
+  afterNavigate(({ from, type, delta }) => {
+    const returning = type === "popstate" && (delta ?? 0) < 0;
+    if (!from) {
+      wayBack = null;
+      arrival = "print";
+    } else if (returning) {
+      wayBack = "Back";
+      arrival = "previous";
+    } else {
+      wayBack = describeWayBack(from.url.pathname);
+      arrival = "next";
+    }
+  });
+
+  function goBack() {
+    if (wayBack) history.back();
+    else void goto("/");
+  }
 
   function messageOf(cause: unknown): string {
     return cause instanceof Error ? cause.message : String(cause);
@@ -99,38 +133,63 @@
   </section>
 {:else if story}
   <div class="single">
-    <StoryArticle
-      {story}
-      highlights={highlights.items}
-      onHighlight={(draft) => highlights.add(storyId, draft)}
-      onRemoveHighlight={(id) => highlights.remove(storyId, id)}
+    <div class="way-back">
+      {#if wayBack}
+        <button
+          type="button"
+          class="back"
+          aria-label={wayBack === "Back" ? "Back" : `Back to ${wayBack}`}
+          onclick={goBack}
+        >
+          <span class="arrow" aria-hidden="true">‹</span>
+          {wayBack}
+        </button>
+      {:else}
+        <a class="back" href="/" aria-label="Back to the front page">
+          <span class="arrow" aria-hidden="true">‹</span> Front page
+        </a>
+      {/if}
+    </div>
+    <div
+      {@attach storySwipe({
+        canGo: (direction) => direction === "previous",
+        go: goBack,
+      })}
     >
-      {#snippet footer()}
-        <div class="read-state">
-          {#if read}
-            <p>You finished this story.</p>
-            <button
-              type="button"
-              class="text-button"
-              disabled={saving}
-              onclick={() => setRead(false)}
-            >
-              Mark as unread
-            </button>
-          {:else}
-            <button
-              type="button"
-              class="press"
-              disabled={saving}
-              onclick={() => setRead(true)}
-            >
-              <CheckIcon />
-              Mark as read
-            </button>
-          {/if}
-        </div>
-      {/snippet}
-    </StoryArticle>
+      <StoryArticle
+        {story}
+        entrance={arrival}
+        highlights={highlights.items}
+        onHighlight={(draft) => highlights.add(storyId, draft)}
+        onRemoveHighlight={(id) => highlights.remove(storyId, id)}
+      >
+        {#snippet footer()}
+          <div class="read-state">
+            {#if read}
+              <p>You finished this story.</p>
+              <button
+                type="button"
+                class="text-button"
+                disabled={saving}
+                onclick={() => setRead(false)}
+              >
+                Mark as unread
+              </button>
+            {:else}
+              <button
+                type="button"
+                class="press"
+                disabled={saving}
+                onclick={() => setRead(true)}
+              >
+                <CheckIcon />
+                Mark as read
+              </button>
+            {/if}
+          </div>
+        {/snippet}
+      </StoryArticle>
+    </div>
   </div>
 {/if}
 
@@ -139,6 +198,34 @@
     max-width: 860px;
     margin: 0 auto;
     padding-bottom: var(--space-8);
+  }
+
+  .way-back {
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: var(--touch);
+    padding: 0 var(--space-2) 0 0;
+    border: 0;
+    background: none;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+
+  .back:hover {
+    color: var(--ink);
+  }
+
+  .arrow {
+    font-size: 18px;
+    line-height: 1;
   }
 
   .read-state {
