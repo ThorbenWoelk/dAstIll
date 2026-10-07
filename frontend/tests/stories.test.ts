@@ -157,6 +157,14 @@ describe("small labels", () => {
     expect(readingMinutes(Array(660).fill("word").join(" "))).toBe(3);
   });
 
+  it("counts a hyphenated word once and skips list dashes", () => {
+    // 330 list items of "well-known" are 330 words: 1.5 minutes rounds to 2.
+    const list = Array(330).fill("- well-known").join("\n");
+    expect(readingMinutes(list)).toBe(2);
+    // Counted as two words each, the same text would read as 3 minutes.
+    expect(readingMinutes(Array(660).fill("word").join(" "))).toBe(3);
+  });
+
   it("counts stories left", () => {
     expect(describeStoriesLeft(0)).toBe("No stories left");
     expect(describeStoriesLeft(1)).toBe("1 story left");

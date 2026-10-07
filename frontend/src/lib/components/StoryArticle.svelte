@@ -331,6 +331,7 @@
     overflow-wrap: break-word;
   }
 
+  .body :global(h1),
   .body :global(h2),
   .body :global(h3) {
     margin: var(--space-5) 0 var(--space-2);

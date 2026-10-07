@@ -93,12 +93,28 @@ Shared button styles live in `src/app.css`: `.press` (filled primary) and `.text
 
 `src/lib/edition/summary.ts` maps the generated summary format onto the page:
 
-- `## Overview` becomes the standfirst. A long overview (over 400 characters) stays in the body and only its first sentence leads.
-- `## At a glance` becomes the boxed list.
-- Every other section is the body, in order.
+- `## Overview` becomes the standfirst. A long overview (over 400 characters) stays in the body and only its first sentence leads. If the overview has no clear sentence end, the standfirst is its first 240 characters, cut at a word and ended with "…".
+- `## At a glance` becomes the boxed list. `TL;DR`, `TLDR`, "Summary at a glance", and "Key takeaways at a glance" count as the same section. The box ends at the next heading of any level from 1 to 3.
+- Every other section is the body, in order. Unknown subheadings, like `### Proposed Solutions` inside Key Points, stay where they are.
 - Summaries in another shape render whole as the body.
 
-Summary markdown is model output. Always render it through `renderMarkdown` (`marked` plus DOMPurify). It fails closed to plain text when the sanitizer is unavailable.
+How headings are recognised:
+
+- Levels 1 to 3 count. Case, `**`, a trailing colon, a leading emoji or number, and closing `#`s after a space are ignored. A `#` that is part of the text, like `## Why C#`, stays.
+- German names work too: Überblick or Zusammenfassung (overview), Kernpunkte or Wichtigste Punkte (key points), Fazit or Erkenntnisse (takeaways), Auf einen Blick (at a glance).
+- A known name nested under Key Points or Takeaways (for example `### Overview` under `## Key Points`) is a plain subheading.
+- Lines inside fenced code blocks are never headings.
+
+Cleaning model output before the split:
+
+- A leading `<think>…</think>` block is removed, and a stray `</think>` tag becomes a line break.
+- Leading chat lines like "Here is the summary:" or "Sure, …" are removed, and so is a code fence wrapped around the whole summary.
+- When known sections exist, text before the first one is dropped. That is usually the model thinking out loud.
+- When the model wrote the sections twice (a second glance or overview after Key Points), only the last complete set is kept.
+
+The standfirst is plain text built from the parsed markdown, so `\*`, `&amp;`, `snake_case`, and `5 * 3` read as the writer meant. Sentence ends skip abbreviations (Dr., Mr., vs., e.g., U.S., etc.) and initials (J. R.), and the next sentence must start with a capital letter, a digit, or a quote.
+
+Summary markdown is model output. Always render it through `renderMarkdown` (`marked` plus DOMPurify). Raw HTML in the markdown, like `<PricingTable />` written as prose, shows as text instead of being removed. Timestamps like `[12:34]` stay text and never become links. DOMPurify still cleans the result, and rendering fails closed to plain text when the sanitizer is unavailable.
 
 ---
 
