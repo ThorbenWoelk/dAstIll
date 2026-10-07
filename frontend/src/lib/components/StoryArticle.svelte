@@ -79,8 +79,30 @@
     };
   }
 
+  /**
+   * On phones a tap clears the text selection before the click arrives.
+   * While the Highlight button is pressed, keep it and its draft on screen.
+   */
+  let pressingToolbar = false;
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function pressToolbar(event: PointerEvent) {
+    event.preventDefault();
+    clearTimeout(releaseTimer);
+    pressingToolbar = true;
+  }
+
+  function releaseToolbar() {
+    clearTimeout(releaseTimer);
+    // The click follows pointerup; resync only if it never comes.
+    releaseTimer = setTimeout(() => {
+      pressingToolbar = false;
+      readSelection();
+    }, 400);
+  }
+
   function readSelection() {
-    if (!onHighlight || !article) return;
+    if (!onHighlight || !article || pressingToolbar) return;
     const current = document.getSelection();
     if (!current || current.isCollapsed || current.rangeCount === 0) {
       selection = null;
@@ -101,6 +123,8 @@
   }
 
   function highlightSelection() {
+    clearTimeout(releaseTimer);
+    pressingToolbar = false;
     if (!selection || !onHighlight) return;
     onHighlight(selection.draft);
     document.getSelection()?.removeAllRanges();
@@ -174,7 +198,9 @@
         <button
           type="button"
           class="press"
-          onpointerdown={(event) => event.preventDefault()}
+          onpointerdown={pressToolbar}
+          onpointerup={releaseToolbar}
+          onpointercancel={releaseToolbar}
           onclick={highlightSelection}
         >
           <HighlightIcon />
