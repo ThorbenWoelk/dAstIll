@@ -1,5 +1,6 @@
 use super::{
-    content_status_from_str, content_status_to_str, reconcile_video_statuses_from_storage,
+    content_status_from_str, content_status_to_str, heal_video_statuses_from_storage,
+    reconcile_video_statuses_from_storage,
 };
 use crate::models::{ContentStatus, Video};
 
@@ -57,4 +58,79 @@ fn content_status_round_trips_through_str() {
             status
         );
     }
+}
+
+#[test]
+fn heal_keeps_queued_regeneration_pending() {
+    let mut video = build_video();
+    video.transcript_status = ContentStatus::Ready;
+    video.summary_status = ContentStatus::Pending;
+    let healed = heal_video_statuses_from_storage(&video, true, true);
+    assert_eq!(healed.summary_status, ContentStatus::Pending);
+}
+
+#[test]
+fn heal_marks_stuck_loading_summary_ready_when_summary_exists() {
+    let mut video = build_video();
+    video.transcript_status = ContentStatus::Ready;
+    video.summary_status = ContentStatus::Loading;
+    let healed = heal_video_statuses_from_storage(&video, true, true);
+    assert_eq!(healed.summary_status, ContentStatus::Ready);
+
+    video.summary_status = ContentStatus::Failed;
+    let healed = heal_video_statuses_from_storage(&video, true, true);
+    assert_eq!(healed.summary_status, ContentStatus::Ready);
+}
+
+#[test]
+fn heal_leaves_loading_summary_without_stored_summary() {
+    let mut video = build_video();
+    video.transcript_status = ContentStatus::Ready;
+    video.summary_status = ContentStatus::Loading;
+    let healed = heal_video_statuses_from_storage(&video, true, false);
+    assert_eq!(healed.summary_status, ContentStatus::Loading);
+}
+
+#[tokio::test]
+async fn startup_heal_does_not_cancel_queued_regeneration() {
+    let store = crate::db::Store::for_test().await;
+    let mut queued = build_video();
+    queued.id = "queued".to_string();
+    queued.transcript_status = ContentStatus::Ready;
+    queued.summary_status = ContentStatus::Pending;
+    let mut stuck = build_video();
+    stuck.id = "stuck".to_string();
+    stuck.transcript_status = ContentStatus::Ready;
+    stuck.summary_status = ContentStatus::Loading;
+
+    for video in [&queued, &stuck] {
+        super::sql_insert_video(&store, video).await.unwrap();
+        super::sql_update_video_transcript_status(&store, &video.id, video.transcript_status)
+            .await
+            .unwrap();
+        super::sql_update_video_summary_status(&store, &video.id, video.summary_status)
+            .await
+            .unwrap();
+        store
+            .put_json(
+                &format!("summaries/{}.json", video.id),
+                &serde_json::json!({ "video_id": video.id, "content": "old summary" }),
+            )
+            .await
+            .unwrap();
+    }
+
+    let healed = super::sql_heal_queue_videos(&store, 3).await.unwrap();
+
+    assert_eq!(healed, vec!["stuck".to_string()]);
+    let queued_after = super::sql_get_video(&store, "queued", false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(queued_after.summary_status, ContentStatus::Pending);
+    let stuck_after = super::sql_get_video(&store, "stuck", false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stuck_after.summary_status, ContentStatus::Ready);
 }

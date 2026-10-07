@@ -182,10 +182,25 @@ fn should_auto_regenerate_summary_requires_pending_or_loading_and_low_score() {
         Some(7),
         0
     ));
-    assert!(!should_auto_regenerate_summary(
+}
+
+#[test]
+fn should_auto_regenerate_summary_regenerates_queued_unscored_summary() {
+    // The evaluator queues a summary it could not score because the summary was malformed.
+    assert!(should_auto_regenerate_summary(
         ContentStatus::Pending,
         None,
         0
+    ));
+    assert!(!should_auto_regenerate_summary(
+        ContentStatus::Ready,
+        None,
+        0
+    ));
+    assert!(!should_auto_regenerate_summary(
+        ContentStatus::Pending,
+        None,
+        MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
     ));
 }
 

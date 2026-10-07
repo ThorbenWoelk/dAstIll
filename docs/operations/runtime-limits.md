@@ -95,6 +95,7 @@ Run allocates CPU while the queue worker processes pending videos. Only one run 
 | ------------------------------------- | ------------ | ------------------------------------------ |
 | Queue distillation retries            | `3`          | Transcript and summary processing attempts |
 | Summary auto-regeneration attempts    | `2`          | Low-quality summary regeneration           |
+| Unusable evaluator answers            | `3`          | Failed evaluations before "Unscorable"     |
 | Transcript formatting attempts        | `5`          | Model-assisted transcript cleaning         |
 | Transcript formatting hard timeout    | `270s`       | Transcript cleaning                        |
 | Description-like transcript threshold | `1000` words | YouTube transcript fallback detection      |

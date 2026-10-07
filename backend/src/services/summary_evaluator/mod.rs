@@ -1,9 +1,13 @@
-use serde::Deserialize;
 use thiserror::Error;
 
-use crate::models::{AiStatus, SummaryEvaluationResult};
+use crate::models::{AiStatus, SummaryEvaluationResult, VocabularyReplacement};
 use crate::services::http::is_cloud_model;
 use crate::services::ollama::{CooldownStatusPolicy, OllamaCore, OllamaPromptError};
+
+mod response;
+
+use response::{EvaluatorResponse, evaluation_result_from_response};
+pub use response::{SummaryEvaluation, UnscorableCause};
 
 #[derive(Error, Debug)]
 pub enum SummaryEvaluatorError {
@@ -62,6 +66,7 @@ Use status "unscorable" instead of a numeric score when the source cannot be jud
 - transcript is show notes, a description, or not spoken/source content
 - transcript or summary appears corrupted, mismatched, language-incompatible, or mostly unreadable
 - the summary is too malformed to compare
+When status is "unscorable", say whether the summary (malformed, wrong source, unreadable) or the transcript is the problem in the unscorable cause field. Otherwise leave that field null.
 
 Return one JSON object matching the runtime schema.
 
@@ -72,10 +77,24 @@ Rules:
 - Reserve the lowest scores for genuinely broken summaries and acknowledge when the summary is mostly sound apart from limited issues.
 - Set "status" to exactly "scored" or "unscorable".
 - scores below 10 require at least one defect with a transcript_anchor.
+- Every defect needs a type, a severity (minor or major), the summary claim, and a transcript anchor.
+- When status is "scored", always give all three scores: faithfulness, completeness, and final.
 - 7 is acceptable; 6 or below means the summary should be regenerated.
 - Tags are metadata only. Return 0-4 short Title Case tags supported by the transcript; do not use tags to explain defects.
 - Do not include extra keys, comments, or explain your reasoning outside the JSON."#
     )
+}
+
+/// The transcript text the evaluator compares against.
+///
+/// The summarizer reads a vocabulary-normalized transcript, so canonical names in
+/// the summary (for example a corrected product name) must also appear in what the
+/// evaluator reads. Otherwise correct names get flagged as hallucinations.
+pub(crate) fn transcript_for_evaluation(
+    transcript: &str,
+    vocabulary_replacements: &[VocabularyReplacement],
+) -> String {
+    crate::services::summarizer::apply_vocabulary_replacements(transcript, vocabulary_replacements)
 }
 
 fn evaluator_response_schema() -> serde_json::Value {
@@ -90,6 +109,15 @@ fn evaluator_response_schema() -> serde_json::Value {
             "unscorable_reason": {
                 "anyOf": [
                     { "type": "string" },
+                    { "type": "null" }
+                ]
+            },
+            "unscorable_cause": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "enum": ["transcript", "summary"]
+                    },
                     { "type": "null" }
                 ]
             },
@@ -141,6 +169,7 @@ fn evaluator_response_schema() -> serde_json::Value {
         "required": [
             "status",
             "unscorable_reason",
+            "unscorable_cause",
             "faithfulness_score",
             "completeness_score",
             "final_score",
@@ -200,194 +229,6 @@ fn known_cloud_model_params_billions(model: &str) -> Option<u16> {
         "deepseek-v4-pro:cloud" => Some(1600),
         "kimi-k3:cloud" => Some(2810),
         _ => None,
-    }
-}
-
-#[derive(Deserialize)]
-struct EvaluatorResponse {
-    status: Option<String>,
-    score: Option<i64>,
-    final_score: Option<i64>,
-    faithfulness_score: Option<i64>,
-    completeness_score: Option<i64>,
-    incoherence_note: Option<String>,
-    evaluation_note: Option<String>,
-    unscorable_reason: Option<String>,
-    defects: Option<Vec<EvaluatorDefect>>,
-    tags: Option<Vec<String>>,
-}
-
-#[derive(Deserialize)]
-struct EvaluatorDefect {
-    #[serde(rename = "type")]
-    defect_type: String,
-    severity: String,
-    summary_claim: String,
-    transcript_anchor: String,
-}
-
-fn normalize_tags(tags: Option<Vec<String>>) -> Vec<String> {
-    let mut normalized = Vec::new();
-
-    for tag in tags.unwrap_or_default() {
-        let cleaned = tag.trim().trim_matches('.').to_string();
-        if cleaned.is_empty() {
-            continue;
-        }
-        if normalized
-            .iter()
-            .any(|existing: &String| existing.eq_ignore_ascii_case(&cleaned))
-        {
-            continue;
-        }
-        normalized.push(cleaned);
-        if normalized.len() >= 4 {
-            break;
-        }
-    }
-
-    normalized
-}
-
-fn evaluation_result_from_response(
-    parsed: EvaluatorResponse,
-) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
-    let tags = normalize_tags(parsed.tags);
-    let status = parsed.status.as_deref().unwrap_or("scored");
-    if status == "unscorable" {
-        let reason = clean_required_text(parsed.unscorable_reason, "unscorable_reason")?;
-        return Ok(SummaryEvaluationResult {
-            quality_score: None,
-            quality_note: Some(format!("**Unscorable**:\n- {reason}")),
-            quality_model_used: None,
-            summary_tags: tags,
-        });
-    }
-    if status != "scored" {
-        return Err(SummaryEvaluatorError::ParseFailed(format!(
-            "unsupported evaluation status `{status}`"
-        )));
-    }
-
-    let score = parse_score(parsed.final_score.or(parsed.score), "final_score")?;
-    let legacy_note = parsed
-        .incoherence_note
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-
-    let is_structured = parsed.status.is_some() || parsed.final_score.is_some();
-    let note = if is_structured {
-        let faithfulness_score = parse_score(parsed.faithfulness_score, "faithfulness_score")?;
-        let completeness_score = parse_score(parsed.completeness_score, "completeness_score")?;
-        let defects = parsed.defects.unwrap_or_default();
-        if score < 10 && defects.is_empty() {
-            return Err(SummaryEvaluatorError::ParseFailed(
-                "defects are required for scores below 10".to_string(),
-            ));
-        }
-        validate_defects(&defects)?;
-        build_structured_note(
-            faithfulness_score,
-            completeness_score,
-            score,
-            &defects,
-            parsed.evaluation_note,
-        )
-    } else {
-        legacy_note
-    };
-
-    Ok(SummaryEvaluationResult {
-        quality_score: Some(score),
-        quality_note: note,
-        quality_model_used: None,
-        summary_tags: tags,
-    })
-}
-
-fn parse_score(value: Option<i64>, field: &str) -> Result<u8, SummaryEvaluatorError> {
-    let value =
-        value.ok_or_else(|| SummaryEvaluatorError::ParseFailed(format!("{field} is required")))?;
-    if !(0..=10).contains(&value) {
-        return Err(SummaryEvaluatorError::ParseFailed(format!(
-            "{field} score must be between 0 and 10"
-        )));
-    }
-    Ok(value as u8)
-}
-
-fn clean_required_text(
-    value: Option<String>,
-    field: &str,
-) -> Result<String, SummaryEvaluatorError> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| SummaryEvaluatorError::ParseFailed(format!("{field} is required")))
-}
-
-fn validate_defects(defects: &[EvaluatorDefect]) -> Result<(), SummaryEvaluatorError> {
-    for defect in defects {
-        require_defect_field(&defect.defect_type, "defect.type")?;
-        require_defect_field(&defect.severity, "defect.severity")?;
-        require_defect_field(&defect.summary_claim, "summary_claim")?;
-        require_defect_field(&defect.transcript_anchor, "transcript_anchor")?;
-    }
-    Ok(())
-}
-
-fn require_defect_field(value: &str, field: &str) -> Result<(), SummaryEvaluatorError> {
-    if value.trim().is_empty() {
-        return Err(SummaryEvaluatorError::ParseFailed(format!(
-            "{field} is required"
-        )));
-    }
-    Ok(())
-}
-
-fn build_structured_note(
-    faithfulness_score: u8,
-    completeness_score: u8,
-    final_score: u8,
-    defects: &[EvaluatorDefect],
-    evaluation_note: Option<String>,
-) -> Option<String> {
-    let mut sections = vec![
-        "**Scores**:".to_string(),
-        format!("- Faithfulness: {faithfulness_score}/10"),
-        format!("- Completeness: {completeness_score}/10"),
-        format!("- Final: {final_score}/10"),
-    ];
-
-    if !defects.is_empty() {
-        sections.push("\n**Defects**:".to_string());
-        for defect in defects {
-            sections.push(format!(
-                "- **{} {}**: {}; transcript anchor: {}",
-                title_case(defect.severity.trim()),
-                defect.defect_type.trim(),
-                defect.summary_claim.trim(),
-                defect.transcript_anchor.trim()
-            ));
-        }
-    }
-
-    if let Some(note) = evaluation_note
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        sections.push("\n**Evaluation**:".to_string());
-        sections.push(format!("- {note}"));
-    }
-
-    Some(sections.join("\n"))
-}
-
-fn title_case(value: &str) -> String {
-    let mut chars = value.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
     }
 }
 
@@ -458,6 +299,18 @@ impl SummaryEvaluatorService {
         summary: &str,
         video_title: &str,
     ) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
+        self.evaluate_with_cause(transcript, summary, video_title)
+            .await
+            .map(|evaluation| evaluation.result)
+    }
+
+    /// Like [`Self::evaluate`], but also says why a summary was unscorable.
+    pub async fn evaluate_with_cause(
+        &self,
+        transcript: &str,
+        summary: &str,
+        video_title: &str,
+    ) -> Result<SummaryEvaluation, SummaryEvaluatorError> {
         if transcript.trim().is_empty() || summary.trim().is_empty() {
             return Err(SummaryEvaluatorError::EvaluationFailed(
                 "Transcript or summary is empty".to_string(),
@@ -471,7 +324,7 @@ impl SummaryEvaluatorService {
             .await?;
 
         let mut evaluation = evaluation_result_from_response(parsed)?;
-        evaluation.quality_model_used = Some(model_used);
+        evaluation.result.quality_model_used = Some(model_used);
         Ok(evaluation)
     }
 

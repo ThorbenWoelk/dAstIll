@@ -143,7 +143,7 @@ fn transcript_text(transcript: &Transcript) -> Option<&str> {
     .find(|content| !content.trim().is_empty())
 }
 
-async fn sync_search_source(
+pub(super) async fn sync_search_source(
     state: &AppState,
     video_id: &str,
     source_kind: SearchSourceKind,
@@ -571,18 +571,33 @@ fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus)
     }
 }
 
+/// How `ensure_summary_internal` treats a summary that is already stored.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StoredSummaryUse {
+    /// Return it (user read path).
+    Return,
+    /// Return it unless it is queued for automatic regeneration (queue path).
+    ReturnUnlessAutoRegenerating,
+    /// Ignore it and generate a new one; it is overwritten only on success.
+    Replace,
+}
+
 async fn ensure_summary_internal(
     state: &AppState,
     video_id: &str,
-    allow_cached_auto_regen: bool,
+    stored_summary_use: StoredSummaryUse,
 ) -> Result<Summary, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     {
-        if let Some(summary) = db::get_summary(&state.db, video_id)
-            .await
-            .map_err(map_db_err)?
-        {
-            if allow_cached_auto_regen {
+        let stored_summary = if stored_summary_use == StoredSummaryUse::Replace {
+            None
+        } else {
+            db::get_summary(&state.db, video_id)
+                .await
+                .map_err(map_db_err)?
+        };
+        if let Some(summary) = stored_summary {
+            if stored_summary_use == StoredSummaryUse::ReturnUnlessAutoRegenerating {
                 let auto_regen_attempts = db::get_summary_auto_regen_attempts(&state.db, video_id)
                     .await
                     .map_err(map_db_err)?;
@@ -725,14 +740,28 @@ pub(crate) async fn ensure_summary(
     state: &AppState,
     video_id: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    ensure_summary_internal(state, video_id, false).await
+    ensure_summary_internal(state, video_id, StoredSummaryUse::Return).await
 }
 
 pub(crate) async fn ensure_summary_for_queue(
     state: &AppState,
     video_id: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    ensure_summary_internal(state, video_id, true).await
+    ensure_summary_internal(
+        state,
+        video_id,
+        StoredSummaryUse::ReturnUnlessAutoRegenerating,
+    )
+    .await
+}
+
+/// Generates a new summary and overwrites the stored one only on success.
+/// On failure the stored summary stays untouched.
+pub(super) async fn regenerate_summary_replacing_existing(
+    state: &AppState,
+    video_id: &str,
+) -> Result<Summary, (StatusCode, String)> {
+    ensure_summary_internal(state, video_id, StoredSummaryUse::Replace).await
 }
 
 const COMPLETED_LIVE_TRANSCRIPT_GRACE_SECONDS: i64 = 30 * 60;

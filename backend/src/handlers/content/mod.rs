@@ -29,6 +29,9 @@ pub(crate) use generation::{ensure_summary, ensure_summary_for_queue, ensure_tra
 
 pub(crate) const MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE: u8 = 7;
 pub(crate) const MAX_SUMMARY_AUTO_REGEN_ATTEMPTS: u8 = 2;
+/// After this many failed evaluation attempts on the same summary text, the
+/// summary is marked unscorable and the evaluation scan moves on.
+pub(crate) const MAX_SUMMARY_EVALUATION_FAILURES: u8 = 3;
 
 fn map_fts_err(err: String) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, err)
@@ -57,6 +60,11 @@ async fn delete_video_search_source(
     Ok(())
 }
 
+/// Whether the queue should replace a cached summary with a new one.
+///
+/// Only the evaluation worker moves a video with a stored summary back to
+/// `Pending`. It does that for low scores and for summaries the evaluator could
+/// not score because the summary itself was malformed (no score).
 pub(crate) fn should_auto_regenerate_summary(
     summary_status: ContentStatus,
     quality_score: Option<u8>,
@@ -67,8 +75,34 @@ pub(crate) fn should_auto_regenerate_summary(
         ContentStatus::Pending | ContentStatus::Loading
     ) && quality_score
         .map(|score| score < MIN_SUMMARY_QUALITY_SCORE_FOR_ACCEPTANCE)
-        .unwrap_or(false)
+        .unwrap_or(true)
         && auto_regen_attempts < MAX_SUMMARY_AUTO_REGEN_ATTEMPTS
+}
+
+/// Puts a summary back (for example the better-scored one from before an
+/// automatic regeneration) and keeps search and caches in step with it.
+pub(crate) async fn restore_summary(
+    state: &AppState,
+    summary: &Summary,
+) -> Result<(), (StatusCode, String)> {
+    db::upsert_summary(&state.db, summary)
+        .await
+        .map_err(map_db_err)?;
+    generation::sync_search_source(
+        state,
+        &summary.video_id,
+        SearchSourceKind::Summary,
+        Some(summary.content.as_str()),
+    )
+    .await
+    .map_err(map_db_err)?;
+    if let Some(video) = db::get_video(&state.db, &summary.video_id, false)
+        .await
+        .map_err(map_db_err)?
+    {
+        evict_video_scope_cache(state, &video.channel_id).await?;
+    }
+    Ok(())
 }
 
 #[utoipa::path(
@@ -522,11 +556,35 @@ pub async fn regenerate_summary(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     tracing::info!(video_id = %video_id, "summary regeneration requested");
     let video = require_video(&state, &video_id).await?;
-    delete_video_search_source(&state, &video_id, SearchSourceKind::Summary).await?;
-    evict_video_scope_cache(&state, &video.channel_id).await?;
+    let had_summary = db::get_summary(&state.db, &video_id)
+        .await
+        .map_err(map_db_err)?
+        .is_some();
 
-    let summary = ensure_summary(&state, &video_id).await?;
-    Ok(Json(summary))
+    // Generate first. The stored summary is replaced only when generation succeeds.
+    match generation::regenerate_summary_replacing_existing(&state, &video_id).await {
+        Ok(summary) => {
+            // The user asked for this summary; an older automatic snapshot must not win.
+            db::discard_summary_before_regeneration(&state.db, &video_id)
+                .await
+                .map_err(map_db_err)?;
+            Ok(Json(summary))
+        }
+        Err(err) => {
+            if had_summary {
+                tracing::warn!(
+                    video_id = %video_id,
+                    error = %err.1,
+                    "summary regeneration failed - keeping the existing summary"
+                );
+                db::update_video_summary_status(&state.db, &video_id, ContentStatus::Ready)
+                    .await
+                    .map_err(map_db_err)?;
+                evict_video_scope_cache(&state, &video.channel_id).await?;
+            }
+            Err(err)
+        }
+    }
 }
 
 /// Wipe transcript, summary, quality metadata, and search vectors for a video,

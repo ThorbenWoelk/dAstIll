@@ -92,6 +92,26 @@ fn reconcile_video_statuses_from_storage(
     reconciled
 }
 
+/// Startup heal version of [`reconcile_video_statuses_from_storage`].
+///
+/// A stored summary marks the row ready only when the summary status is stuck
+/// (`Loading`) or `Failed`. `Pending` with a stored summary means the evaluator
+/// queued an automatic regeneration, so it stays queued.
+fn heal_video_statuses_from_storage(
+    video: &Video,
+    transcript_exists: bool,
+    summary_exists: bool,
+) -> Video {
+    let mut healed = video.clone();
+    if transcript_exists {
+        healed.transcript_status = ContentStatus::Ready;
+    }
+    if summary_exists && video.summary_status != ContentStatus::Pending {
+        healed.summary_status = ContentStatus::Ready;
+    }
+    healed
+}
+
 async fn hydrate_inserted_video_from_storage(
     store: &Store,
     video: &Video,
@@ -495,7 +515,10 @@ pub async fn sql_heal_queue_videos(
 
     let mut healed_video_ids = Vec::new();
     for mut video in candidates {
-        let reconciled = hydrate_inserted_video_from_storage(store, &video).await?;
+        let transcript_exists = store.key_exists(&transcript_storage_key(&video.id)).await?;
+        let summary_exists = store.key_exists(&summary_storage_key(&video.id)).await?;
+        let reconciled =
+            heal_video_statuses_from_storage(&video, transcript_exists, summary_exists);
         let mut changed = reconciled.transcript_status != video.transcript_status
             || reconciled.summary_status != video.summary_status;
         video = reconciled;
