@@ -155,20 +155,30 @@ test("the highlights page lists, searches, opens, and removes highlights", async
           video_id: "v-old",
           text: "Standfirst for Postgres was enough",
         }),
+        savedHighlight({
+          id: "90071992547409933",
+          video_id: "v-new",
+          text: "Something to remember.",
+        }),
       ],
     },
     { path: "/highlights" },
   );
 
   await expect(page.getByRole("heading", { name: "Highlights" })).toBeVisible();
-  await expect(page.getByText("2 highlights")).toBeVisible();
-  await expect(page.locator("blockquote")).toHaveCount(2);
+  await expect(page.getByText("3 highlights")).toBeVisible();
+  // Newest story first, whatever channel it belongs to.
+  await expect(page.locator(".highlights-page h2")).toHaveText([
+    "Why small teams ship calmer software",
+    "What sleep pressure actually is",
+    "Postgres was enough",
+  ]);
 
   await page.getByLabel("Search highlights").fill("sleep");
   await expect(page.locator("blockquote")).toHaveText([
     "Detail about What sleep pressure actually is",
   ]);
-  await expect(page.getByText("1 of 2 highlights")).toBeVisible();
+  await expect(page.getByText("1 of 3 highlights")).toBeVisible();
   await page.getByLabel("Search highlights").fill("nothing like this");
   await expect(
     page.getByText('No highlight matches "nothing like this".'),
@@ -189,7 +199,7 @@ test("the highlights page lists, searches, opens, and removes highlights", async
   await page
     .getByRole("button", { name: /Remove highlight: Standfirst for Postgres/ })
     .click();
-  await expect(page.locator("blockquote")).toHaveCount(1);
+  await expect(page.locator("blockquote")).toHaveCount(2);
   expect(backend.deletedHighlightIds).toEqual(["90071992547409932"]);
 });
 

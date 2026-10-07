@@ -1,25 +1,24 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import {
-    deleteHighlight,
-    listHighlights,
-    type HighlightChannelGroup,
-  } from "$lib/api";
+  import { deleteHighlight, listHighlights } from "$lib/api";
   import Masthead from "$lib/components/Masthead.svelte";
+  import { describeReleaseDay } from "$lib/edition/stories";
   import {
     countHighlights,
-    filterHighlightGroups,
+    filterHighlightedStories,
+    listHighlightedStories,
     withoutHighlight,
+    type HighlightedStory,
   } from "$lib/highlights/collection";
 
-  let groups = $state.raw<HighlightChannelGroup[]>([]);
+  let stories = $state.raw<HighlightedStory[]>([]);
   let loading = $state(true);
   let failure = $state<string | null>(null);
   let removeError = $state<string | null>(null);
   let query = $state("");
 
-  const shown = $derived(filterHighlightGroups(groups, query));
-  const total = $derived(countHighlights(groups));
+  const shown = $derived(filterHighlightedStories(stories, query));
+  const total = $derived(countHighlights(stories));
   const shownCount = $derived(countHighlights(shown));
 
   function messageOf(cause: unknown): string {
@@ -34,7 +33,7 @@
     loading = true;
     failure = null;
     try {
-      groups = await listHighlights();
+      stories = listHighlightedStories(await listHighlights());
     } catch (cause) {
       failure = messageOf(cause);
     } finally {
@@ -43,13 +42,13 @@
   }
 
   async function remove(highlightId: string) {
-    const before = groups;
-    groups = withoutHighlight(groups, highlightId);
+    const before = stories;
+    stories = withoutHighlight(stories, highlightId);
     removeError = null;
     try {
       await deleteHighlight(highlightId);
     } catch (cause) {
-      groups = before;
+      stories = before;
       removeError = `Could not remove the highlight: ${messageOf(cause)}`;
     }
   }
@@ -68,7 +67,8 @@
 <section class="highlights-page" aria-labelledby="highlights-heading">
   <h1 id="highlights-heading">Highlights</h1>
   <p class="intro">
-    Passages you marked while reading. Select text in any story to add one.
+    Passages you marked while reading, newest stories first. Select text in any
+    story to add one.
   </p>
 
   {#if loading}
@@ -100,34 +100,35 @@
       <p class="message" role="alert">{removeError}</p>
     {/if}
 
-    {#each shown as channel (channel.channel_id)}
-      <section class="channel" aria-label={channel.channel_name}>
-        <h2 class="label channel-name">{channel.channel_name}</h2>
-        {#each channel.videos as video (video.video_id)}
-          <article class="video">
-            <h3>
-              <a href={`/stories/${encodeURIComponent(video.video_id)}`}>
-                {video.title}
-              </a>
-            </h3>
-            <ul>
-              {#each video.highlights as highlight (highlight.id)}
-                <li>
-                  <blockquote>{highlight.text}</blockquote>
-                  <button
-                    type="button"
-                    class="text-button"
-                    aria-label={`Remove highlight: ${highlight.text.slice(0, 60)}`}
-                    onclick={() => remove(highlight.id)}
-                  >
-                    Remove
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          </article>
-        {/each}
-      </section>
+    {#each shown as story (story.videoId)}
+      <article class="video">
+        <p class="label kicker">
+          {story.channelName}
+          {#if describeReleaseDay(story.publishedAt)}
+            <span class="day">· {describeReleaseDay(story.publishedAt)}</span>
+          {/if}
+        </p>
+        <h2>
+          <a href={`/stories/${encodeURIComponent(story.videoId)}`}>
+            {story.title}
+          </a>
+        </h2>
+        <ul>
+          {#each story.highlights as highlight (highlight.id)}
+            <li>
+              <blockquote>{highlight.text}</blockquote>
+              <button
+                type="button"
+                class="text-button"
+                aria-label={`Remove highlight: ${highlight.text.slice(0, 60)}`}
+                onclick={() => remove(highlight.id)}
+              >
+                Remove
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </article>
     {:else}
       <p class="quiet">No highlight matches "{query.trim()}".</p>
     {/each}
@@ -181,11 +182,13 @@
     color: var(--ink-soft);
   }
 
-  .channel-name {
-    margin: var(--space-6) 0 0;
-    padding-bottom: var(--space-2);
-    border-bottom: 2px solid var(--rule);
+  .kicker {
+    margin: 0 0 var(--space-1);
     color: var(--kicker);
+  }
+
+  .day {
+    color: var(--ink-soft);
   }
 
   .video {
@@ -193,18 +196,18 @@
     border-bottom: 1px solid var(--hairline);
   }
 
-  h3 {
+  h2 {
     margin: 0 0 var(--space-3);
     font-size: 21px;
     line-height: 1.25;
     text-wrap: balance;
   }
 
-  h3 a {
+  h2 a {
     text-decoration: none;
   }
 
-  h3 a:hover {
+  h2 a:hover {
     text-decoration: underline;
     text-underline-offset: 3px;
   }
