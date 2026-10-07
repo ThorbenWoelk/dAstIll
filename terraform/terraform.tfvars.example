@@ -35,7 +35,7 @@ firebase_web_app_display_name = "dAstIll Web"
 # github_repository = "ThorbenWoelk/dAstIll"
 
 ollama_url                = "https://your-ollama-proxy.com"
-ollama_summary_model      = "glm-5.3:cloud"
+ollama_summary_model      = "glm-5.1:cloud"
 ollama_default_chat_model = "glm-5.3:cloud"
 summary_evaluator_model   = "deepseek-v4-pro:cloud"
 ollama_fallback_model     = "qwen3-coder:30b"

@@ -1,5 +1,7 @@
 use crate::models::VocabularyReplacement;
 
+use super::transcript_size::count_transcript_words;
+
 pub(super) const SUMMARY_PREAMBLE: &str = "You are a meticulous, comprehensive transcript-grounded summarizer. \
     Your summaries must capture all substantive key points from the transcript; do not skip or gloss over editorial content. \
     If you are confident a portion is a paid promotion, sponsor read, or standalone ad segment, you may omit it from the summary. \
@@ -46,7 +48,7 @@ pub(super) fn build_summary_prompt(
     video_title: &str,
     vocabulary_replacements: &[VocabularyReplacement],
 ) -> String {
-    let word_count = transcript.split_whitespace().count();
+    let word_count = count_transcript_words(transcript);
     let length_guidance = if word_count < 500 {
         "This is a short transcript. Keep the summary concise but still capture every point made."
     } else if word_count < 2000 {
@@ -80,6 +82,12 @@ Reliability rules:
 - If a point is uncertain or incomplete in the transcript, say so briefly.
 - Keep wording precise and avoid speculative language.
 - Start directly with section heading ## At a glance - no top title line.
+
+Language and output rules:
+- Write the whole summary in English.
+- Use the section headings exactly as written below.
+- Do not write words in Chinese, Japanese, or any other non-Latin script, unless you quote a proper name or a non-English source term exactly as it appears in the transcript.
+- Output only the summary. Do not include your reasoning, notes, drafts, or any remarks before or after the summary.
 
 Output format (exact section headings):
 ## At a glance

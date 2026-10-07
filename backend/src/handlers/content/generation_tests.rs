@@ -2,10 +2,10 @@ use super::{
     MAX_SUMMARY_AUTO_REGEN_ATTEMPTS, completed_live_transcript_grace_elapsed,
     completed_live_transcript_looks_like_description, is_valid_cached_transcript,
     should_auto_regenerate_summary, summarizer_error_statuses, summarizer_pending_message,
-    transcript_text,
+    transcript_is_only_video_description, transcript_text,
 };
 use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
-use crate::services::summarizer::SummarizerError;
+use crate::services::summarizer::{SummarizerError, SummaryOutputProblem};
 use axum::http::StatusCode;
 
 fn make_transcript(raw: Option<&str>, formatted: Option<&str>) -> Transcript {
@@ -54,6 +54,78 @@ fn summarizer_non_temporary_errors_mark_summary_failed() {
         )),
         (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed)
     );
+}
+
+#[test]
+fn rejected_summary_output_marks_summary_failed_for_queue_retry() {
+    let error = SummarizerError::RejectedOutput {
+        problem: SummaryOutputProblem::MissingGlanceSection,
+        model: "glm-5.3:cloud".to_string(),
+    };
+    assert_eq!(
+        summarizer_error_statuses(&error),
+        (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed)
+    );
+}
+
+const SAMPLE_DESCRIPTION: &str = "Join our Discord community: https://discord.example/abc \
+Get the merch at https://shop.example.com and support the channel on Patreon. \
+Chapters: 00:00 Intro 01:30 Why platform teams matter 05:10 Building trust in agents \
+09:45 Measuring results 12:00 Closing thoughts. Recorded at an example conference.";
+
+#[test]
+fn transcript_matching_the_description_counts_as_description_only() {
+    assert!(transcript_is_only_video_description(
+        SAMPLE_DESCRIPTION,
+        SAMPLE_DESCRIPTION,
+        0
+    ));
+
+    // The transcript tool can add a title line or drop some links.
+    let with_title = format!("Platform teams panel\n{}", &SAMPLE_DESCRIPTION[..200]);
+    assert!(transcript_is_only_video_description(
+        &with_title,
+        SAMPLE_DESCRIPTION,
+        0
+    ));
+}
+
+#[test]
+fn real_transcript_is_not_description_only() {
+    let spoken = "welcome back everyone today we talk about platform teams and why trust \
+in coding agents grows step by step first the agent reviews code then it blocks merges on \
+real issues and only later does it fix problems on its own we also measure results before \
+we automate anything else ";
+    let long_transcript = format!("{spoken}{spoken}{spoken}{SAMPLE_DESCRIPTION}");
+    assert!(!transcript_is_only_video_description(
+        &long_transcript,
+        SAMPLE_DESCRIPTION,
+        0
+    ));
+    assert!(!transcript_is_only_video_description(
+        spoken,
+        SAMPLE_DESCRIPTION,
+        0
+    ));
+}
+
+#[test]
+fn timed_captions_or_short_descriptions_are_never_description_only() {
+    assert!(!transcript_is_only_video_description(
+        SAMPLE_DESCRIPTION,
+        SAMPLE_DESCRIPTION,
+        12
+    ));
+    assert!(!transcript_is_only_video_description(
+        "New video out now",
+        "New video out now",
+        0
+    ));
+    assert!(!transcript_is_only_video_description(
+        "",
+        SAMPLE_DESCRIPTION,
+        0
+    ));
 }
 
 #[test]

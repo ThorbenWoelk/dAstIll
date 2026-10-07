@@ -323,7 +323,7 @@ jobs:
           add_env_var SEARCH_SEMANTIC_ENABLED "false"
           add_env_var SEARCH_AUTO_CREATE_VECTOR_INDEX "false"
           add_env_var OLLAMA_URL "https://ollama.com"
-          add_env_var OLLAMA_SUMMARY_MODEL "glm-5.3:cloud"
+          add_env_var OLLAMA_SUMMARY_MODEL "glm-5.1:cloud"
           add_env_var OLLAMA_DEFAULT_CHAT_MODEL "glm-5.3:cloud"
           add_env_var SUMMARY_EVALUATOR_MODEL "deepseek-v4-pro:cloud"
           add_env_var CHAT_MULTI_PASS_ENABLED "true"

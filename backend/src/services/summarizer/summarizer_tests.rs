@@ -3,11 +3,15 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 use super::prompts::{build_clean_transcript_prompt, build_summary_prompt};
-use super::transcript_compare::{detect_transcript_mismatch, strip_summary_title_heading};
+use super::transcript_compare::detect_transcript_mismatch;
+use super::transcript_size::{
+    LOCAL_CONTEXT_MAX_TOKENS, LOCAL_CONTEXT_MIN_TOKENS, SUMMARY_MAX_TIMEOUT_SECS,
+    count_transcript_words, local_context_tokens, summary_timeout,
+};
 use super::{
-    MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerService, TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS,
-    TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS, apply_vocabulary_replacements,
-    transcript_text_equivalent,
+    MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError, SummarizerService, SummaryOutputProblem,
+    TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS, TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS,
+    apply_vocabulary_replacements, normalize_transcript_vocabulary, transcript_text_equivalent,
 };
 use crate::models::{AiStatus, VocabularyReplacement};
 use crate::services::ollama::{CLOUD_PROMPT_TIMEOUT_SECS, OllamaCore};
@@ -78,39 +82,6 @@ fn detect_transcript_mismatch_reports_first_mismatch_context() {
     assert_eq!(mismatch.reason, "token mismatch");
     assert_eq!(mismatch.expected_token.as_deref(), Some("gamma"));
     assert_eq!(mismatch.actual_token.as_deref(), Some("zeta"));
-}
-
-#[test]
-fn strip_summary_title_heading_removes_hash_summary_colon() {
-    let input = "# Summary: The 36-Month AI Crisis\n\n## Brief Overview\nContent";
-    assert_eq!(
-        strip_summary_title_heading(input),
-        "## Brief Overview\nContent"
-    );
-}
-
-#[test]
-fn strip_summary_title_heading_removes_video_summary() {
-    let input = "## Video Summary: The Truth About High Performers\n\n### Overview";
-    assert_eq!(strip_summary_title_heading(input), "### Overview");
-}
-
-#[test]
-fn strip_summary_title_heading_removes_trailing_summary() {
-    let input = "# Cursor's Agents - Video Summary\n\n## Brief Overview";
-    assert_eq!(strip_summary_title_heading(input), "## Brief Overview");
-}
-
-#[test]
-fn strip_summary_title_heading_preserves_non_summary_heading() {
-    let input = "# Google AI Studio 2.0: Upgrade Overview\n\n## Brief Overview";
-    assert_eq!(strip_summary_title_heading(input), input);
-}
-
-#[test]
-fn strip_summary_title_heading_preserves_body_with_summary_word() {
-    let input = "## Overview\nThis is a summary of the video.";
-    assert_eq!(strip_summary_title_heading(input), input);
 }
 
 #[test]
@@ -194,6 +165,315 @@ fn apply_vocabulary_replacements_skips_empty_and_identity_rules() {
     let result = apply_vocabulary_replacements("Anthropic", &replacements);
 
     assert_eq!(result, "Anthropic");
+}
+
+fn vocabulary_rule(from: &str, to: &str) -> VocabularyReplacement {
+    VocabularyReplacement {
+        from: from.to_string(),
+        to: to.to_string(),
+        added_at: chrono::Utc::now(),
+    }
+}
+
+#[test]
+fn normalize_transcript_vocabulary_matches_whole_words_only() {
+    let rules = vec![vocabulary_rule("chat", "ChatGPT")];
+
+    let result = normalize_transcript_vocabulary(
+        "We were chatting about chat, chatbots, and the chat.",
+        &rules,
+    );
+
+    assert_eq!(
+        result,
+        "We were chatting about ChatGPT, chatbots, and the ChatGPT."
+    );
+}
+
+#[test]
+fn normalize_transcript_vocabulary_skips_text_already_in_canonical_form() {
+    let rules = vec![vocabulary_rule("Claude", "Claude Code")];
+
+    let result = normalize_transcript_vocabulary("Claude Code is not Claude.", &rules);
+
+    assert_eq!(result, "Claude Code is not Claude Code.");
+}
+
+#[test]
+fn normalize_transcript_vocabulary_is_idempotent() {
+    let rules = vec![
+        vocabulary_rule("Claude", "Claude Code"),
+        vocabulary_rule("code", "Code"),
+        vocabulary_rule("Open A I", "OpenAI"),
+    ];
+    let transcript = "Claude wrote code for Open A I. Claude Code reviewed it.";
+
+    let once = normalize_transcript_vocabulary(transcript, &rules);
+    let twice = normalize_transcript_vocabulary(&once, &rules);
+
+    assert_eq!(
+        once,
+        "Claude Code wrote Code for OpenAI. Claude Code reviewed it."
+    );
+    assert_eq!(twice, once);
+}
+
+#[test]
+fn normalize_transcript_vocabulary_skips_canonical_form_that_ends_with_the_rule() {
+    let rules = vec![vocabulary_rule("Pro", "Gemini Pro")];
+
+    let result = normalize_transcript_vocabulary("Gemini Pro beats Pro. Product stays.", &rules);
+
+    assert_eq!(result, "Gemini Pro beats Gemini Pro. Product stays.");
+}
+
+#[test]
+fn normalize_transcript_vocabulary_handles_phrases_with_punctuation_edges() {
+    let rules = vec![vocabulary_rule("C++", "C plus plus")];
+
+    let result = normalize_transcript_vocabulary("I like C++ and C++20.", &rules);
+
+    assert_eq!(result, "I like C plus plus and C plus plus20.");
+}
+
+#[test]
+fn build_summary_prompt_states_language_and_output_rules() {
+    let prompt = build_summary_prompt("alpha beta", "Sample Title", &[]);
+    assert!(prompt.contains("Write the whole summary in English."));
+    assert!(prompt.contains("Use the section headings exactly as written below."));
+    assert!(prompt.contains("Chinese, Japanese, or any other non-Latin script"));
+    assert!(prompt.contains("Do not include your reasoning"));
+}
+
+#[test]
+fn build_summary_prompt_counts_unspaced_scripts_by_characters() {
+    // 1,200 Han characters and no spaces: about 600 words, not one.
+    let transcript = "東京".repeat(600);
+    let prompt = build_summary_prompt(&transcript, "Sample", &[]);
+    assert!(prompt.contains("600 words"));
+    assert!(prompt.contains("medium-length transcript"));
+}
+
+#[test]
+fn count_transcript_words_counts_spaced_text_by_tokens() {
+    assert_eq!(count_transcript_words("one two  three\nfour"), 4);
+    assert_eq!(count_transcript_words("well - okay"), 3);
+    assert_eq!(count_transcript_words(""), 0);
+}
+
+#[test]
+fn count_transcript_words_estimates_unspaced_scripts_from_characters() {
+    // Ten Han and Kana characters count as five words.
+    assert_eq!(count_transcript_words("東京タワーへ行きました"), 6);
+    assert_eq!(count_transcript_words("東京タワーへ行きまし"), 5);
+    // Thai has no spaces between words: about four characters per word.
+    assert_eq!(count_transcript_words("สวัสดีครับ"), 3);
+    // Mixed tokens count the Latin part as one word.
+    assert_eq!(count_transcript_words("AI技術"), 2);
+}
+
+#[test]
+fn summary_timeout_scales_with_transcript_length_up_to_a_cap() {
+    assert_eq!(summary_timeout(0).as_secs(), CLOUD_PROMPT_TIMEOUT_SECS);
+    assert_eq!(summary_timeout(5_000).as_secs(), CLOUD_PROMPT_TIMEOUT_SECS);
+    assert_eq!(
+        summary_timeout(15_000).as_secs(),
+        CLOUD_PROMPT_TIMEOUT_SECS + 200
+    );
+    assert_eq!(
+        summary_timeout(30_000).as_secs(),
+        CLOUD_PROMPT_TIMEOUT_SECS + 500
+    );
+    assert_eq!(summary_timeout(200_000).as_secs(), SUMMARY_MAX_TIMEOUT_SECS);
+}
+
+#[test]
+fn local_context_tokens_fits_long_prompts_within_bounds() {
+    assert_eq!(
+        local_context_tokens("preamble", "short"),
+        LOCAL_CONTEXT_MIN_TOKENS
+    );
+
+    let long_prompt = "word ".repeat(20_000); // 100,000 chars
+    let tokens = local_context_tokens("preamble", &long_prompt);
+    assert!(
+        tokens > 33_000,
+        "expected room for the prompt, got {tokens}"
+    );
+    assert!(tokens <= LOCAL_CONTEXT_MAX_TOKENS);
+    assert_eq!(tokens % 1_024, 0);
+
+    let huge_prompt = "word ".repeat(200_000);
+    assert_eq!(
+        local_context_tokens("preamble", &huge_prompt),
+        LOCAL_CONTEXT_MAX_TOKENS
+    );
+
+    // Han text uses about one token per character.
+    let han_prompt = "東".repeat(20_000);
+    assert!(local_context_tokens("", &han_prompt) >= 24_000);
+}
+
+/// Serve one canned `/api/generate` reply and return the base URL and the request body.
+async fn serve_one_generate_reply(
+    body: serde_json::Value,
+) -> (String, tokio::task::JoinHandle<serde_json::Value>) {
+    use axum::{Json, Router, routing::post};
+    use std::sync::{Arc, Mutex};
+
+    let seen = Arc::new(Mutex::new(serde_json::Value::Null));
+    let seen_in_handler = seen.clone();
+    let app = Router::new().route(
+        "/api/generate",
+        post(move |Json(request): Json<serde_json::Value>| {
+            let seen = seen_in_handler.clone();
+            let body = body.clone();
+            async move {
+                *seen.lock().unwrap() = request;
+                Json(body)
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    let handle = tokio::spawn(async move {
+        // Give the caller time to send its request, then report what the server saw.
+        for _ in 0..200 {
+            if !seen.lock().unwrap().is_null() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        server.abort();
+        seen.lock().unwrap().clone()
+    });
+    (format!("http://{address}"), handle)
+}
+
+const VALID_SUMMARY: &str = "## At a glance\n- Point one.\n\n## Overview\nOverview text.\n\n## Key Points\n- **Topic**: detail.\n\n## Takeaways\n- Takeaway.";
+
+#[tokio::test]
+async fn summarize_cleans_leaked_reasoning_before_returning() {
+    let raw = format!(
+        "Let me analyze this transcript first.\n\nPlan: cover the topic.</think>{VALID_SUMMARY}\n\nLet me know if you want more detail."
+    );
+    let (base_url, seen) = serve_one_generate_reply(serde_json::json!({
+        "response": raw,
+        "done": true,
+        "done_reason": "stop"
+    }))
+    .await;
+    let service = SummarizerService::new(OllamaCore::new(&base_url, "qwen3:8b"));
+
+    let (summary, model) = service
+        .summarize("A transcript about a topic.", "Title", "vid", "chan", &[])
+        .await
+        .expect("summary should be accepted after cleanup");
+
+    assert_eq!(summary, VALID_SUMMARY);
+    assert_eq!(model, "qwen3:8b");
+    let request = seen.await.unwrap();
+    assert_eq!(request["think"], serde_json::json!(false));
+    assert!(
+        request["options"]["num_ctx"].as_u64().unwrap() >= u64::from(LOCAL_CONTEXT_MIN_TOKENS),
+        "local models get an explicit context window: {request}"
+    );
+}
+
+#[tokio::test]
+async fn summarize_rejects_output_that_hit_the_token_limit() {
+    let (base_url, _seen) = serve_one_generate_reply(serde_json::json!({
+        "response": VALID_SUMMARY,
+        "done": true,
+        "done_reason": "length"
+    }))
+    .await;
+    let service = SummarizerService::new(OllamaCore::new(&base_url, "qwen3:8b"));
+
+    let error = service
+        .summarize("A transcript.", "Title", "vid", "chan", &[])
+        .await
+        .expect_err("length-limited output must not be stored");
+
+    assert!(matches!(
+        error,
+        SummarizerError::RejectedOutput {
+            problem: SummaryOutputProblem::HitOutputLimit,
+            ..
+        }
+    ));
+    assert!(!error.is_rate_limited());
+}
+
+#[tokio::test]
+async fn summarize_rejects_output_without_summary_sections() {
+    let (base_url, _seen) = serve_one_generate_reply(serde_json::json!({
+        "response": "The transcript is short. I will think about it.",
+        "done": true,
+        "done_reason": "stop"
+    }))
+    .await;
+    let service = SummarizerService::new(OllamaCore::new(&base_url, "qwen3:8b"));
+
+    let error = service
+        .summarize("A transcript.", "Title", "vid", "chan", &[])
+        .await
+        .expect_err("reasoning-only output must not be stored");
+
+    assert!(matches!(
+        error,
+        SummarizerError::RejectedOutput {
+            problem: SummaryOutputProblem::MissingGlanceSection,
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn summarize_rejects_chinese_words_in_a_summary_of_an_english_transcript() {
+    let leaked = VALID_SUMMARY.replace("detail.", "the plan停滞不前 after launch.");
+    let (base_url, _seen) = serve_one_generate_reply(serde_json::json!({
+        "response": leaked,
+        "done": true,
+        "done_reason": "stop"
+    }))
+    .await;
+    let service = SummarizerService::new(OllamaCore::new(&base_url, "glm-5.1:cloud"));
+
+    let error = service
+        .summarize("An English transcript.", "Title", "vid", "chan", &[])
+        .await
+        .expect_err("mixed-script output must be retried");
+
+    assert!(matches!(
+        error,
+        SummarizerError::RejectedOutput {
+            problem: SummaryOutputProblem::UnexpectedScript,
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn summarize_does_not_send_context_window_to_cloud_models() {
+    let (base_url, seen) = serve_one_generate_reply(serde_json::json!({
+        "response": VALID_SUMMARY,
+        "done": true,
+        "done_reason": "stop"
+    }))
+    .await;
+    let service = SummarizerService::new(OllamaCore::new(&base_url, "glm-5.1:cloud"));
+
+    service
+        .summarize("A transcript.", "Title", "vid", "chan", &[])
+        .await
+        .expect("valid summary");
+
+    let request = seen.await.unwrap();
+    assert!(request["options"].get("num_ctx").is_none(), "{request}");
 }
 
 #[test]

@@ -252,19 +252,3 @@ fn unescape_markdown(input: &str) -> String {
 
     out
 }
-
-/// Strip a leading heading line that contains "summary" (case-insensitive).
-/// LLMs tend to add titles like `# Summary: ...` or `## Video Summary: ...`
-/// despite explicit prompt instructions not to.
-pub(super) fn strip_summary_title_heading(input: &str) -> String {
-    let trimmed = input.trim_start();
-    if let Some(rest) = trimmed.strip_prefix('#') {
-        // Find the end of the heading line
-        let heading_line = rest.split('\n').next().unwrap_or("");
-        if heading_line.to_ascii_lowercase().contains("summary") {
-            let after = &trimmed[1 + heading_line.len()..];
-            return after.trim_start_matches('\n').to_string();
-        }
-    }
-    input.to_string()
-}
