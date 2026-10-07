@@ -35,20 +35,33 @@ Policy:
 
 Backend startup fails when the summarizer and evaluator use the same model.
 
-The evaluator compares a generated summary against the canonical transcript on:
+The evaluator compares a generated summary against the transcript on:
 
 - faithfulness: summary claims are supported by the transcript
 - completeness: the summary covers the transcript's substantive editorial content
 
-The model returns structured JSON:
+The evaluator reads the same vocabulary-corrected transcript as the summarizer. Without this, a
+correct name from the vocabulary list would look like a hallucination.
+
+The backend sends a JSON schema with each request (Ollama `format`). The model returns:
 
 - `status`: `scored` or `unscorable`
 - `faithfulness_score`, `completeness_score`, and `final_score`
 - `defects[]` with type, severity, affected summary claim, and transcript anchor
-- `unscorable_reason`
+- `unscorable_reason` and `unscorable_cause` (`summary` or `transcript`)
 - `tags[]` as transcript-supported metadata
 
-Rust validates the response against a backend-owned JSON schema before storage.
+Models do not always follow the schema. The backend accepts these gaps:
+
+- a defect without `severity` counts as `minor`
+- a defect without `type` is listed as `issue`
+- a defect with neither a claim nor an anchor is dropped
+- missing axis scores are left out of the note
+- a missing `final_score` is the lower of the two axis scores
+- a score below 10 without defects is kept; the note says no defects were listed
+- an unscorable answer without a reason gets a placeholder reason
+
+The backend rejects an answer with no usable score, a score outside 0-10, or an unknown `status`.
 
 Stored fields:
 
@@ -60,8 +73,49 @@ Stored fields:
 `quality_note` preserves axis scores and defect evidence. Unscorable inputs store a note without a
 numeric score.
 
-Score policy:
+A result is stored only if the summary text is still the one that was evaluated. If the summary was
+replaced while the evaluator ran, the result is dropped and the new summary is evaluated later.
 
-- `7` or above is acceptable
-- `6` or below can requeue the summary for regeneration
-- `videos.retry_count` caps regeneration attempts; retry limits live in [Runtime Limits](/operations/runtime-limits#content-processing-limits)
+### Evaluation Order And Failures
+
+The evaluation worker picks summaries with fewer failed attempts first, then newer videos first.
+Summaries that keep failing cannot block newer ones.
+
+Failed attempts are counted per summary text. A new summary text starts a new count.
+
+- An unusable model answer (for example invalid JSON or no score) counts toward the limit. After
+  `3` unusable answers the summary gets an "Unscorable" note with the last error, and the worker
+  stops picking it.
+- A failed request (timeout, HTTP error) is retried without a limit. It only moves the summary
+  behind others.
+- An unavailable evaluator or an active cloud cooldown pauses evaluation and counts nothing.
+
+### Automatic Regeneration
+
+The evaluation worker sets the video's summary back to `pending` when:
+
+- the score is `6` or below, or
+- the evaluator says the summary itself is unscorable (`unscorable_cause: summary`)
+
+An unscorable transcript (show notes, wrong language, corrupted text) does not trigger
+regeneration, because a new summary would not help.
+
+Hand-written summaries (`model_used: manual`) are evaluated but never regenerated automatically.
+
+Before an automatic regeneration, the backend keeps a copy of the current summary and its score.
+When the new summary is evaluated, the better-scored one stays. If the new one scored lower, the
+old summary comes back.
+
+A per-video auto-regeneration counter caps automatic regenerations at `2` (see
+[Runtime Limits](/operations/runtime-limits#content-processing-limits)). `videos.retry_count` does
+not limit regeneration; it only limits queue processing failures. Saving a manual summary or
+resetting the video sets the counter back to `0`.
+
+Startup repair does not cancel a queued regeneration. It sets a stored summary back to `ready` only
+when the row is stuck in `loading` or marked `failed`.
+
+### Manual Regeneration
+
+Regenerating a summary (`POST /api/videos/{id}/summary/regenerate`) generates the new summary
+first. The stored summary is replaced only when generation succeeds, and search is updated for the
+new text. If generation fails, the old summary stays and the video stays `ready`.

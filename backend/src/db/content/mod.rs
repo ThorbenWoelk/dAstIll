@@ -1,7 +1,7 @@
 use crate::models::{
     ContentStatus, Summary, SummaryEvaluationJob, Transcript, TranscriptRenderMode,
 };
-use crate::search::SearchSourceKind;
+use crate::search::{SearchSourceKind, hash_search_content};
 
 use super::{Store, StoreError};
 
@@ -15,6 +15,25 @@ fn transcript_key(video_id: &str) -> String {
 
 fn summary_key(video_id: &str) -> String {
     format!("summaries/{video_id}.json")
+}
+
+fn auto_regen_attempts_key(video_id: &str) -> String {
+    format!("meta/auto-regen-attempts/{video_id}")
+}
+
+fn evaluation_failures_key(video_id: &str) -> String {
+    format!("meta/summary-eval-failures/{video_id}")
+}
+
+fn summary_before_regeneration_key(video_id: &str) -> String {
+    format!("meta/summary-before-regen/{video_id}")
+}
+
+/// `model_used` value for summaries a user wrote or edited by hand.
+pub(crate) const MANUAL_SUMMARY_MODEL: &str = "manual";
+
+pub(crate) fn is_manual_summary(summary: &Summary) -> bool {
+    summary.model_used.as_deref() == Some(MANUAL_SUMMARY_MODEL)
 }
 
 pub async fn get_summary_audio(store: &Store, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
@@ -150,34 +169,214 @@ pub async fn save_manual_summary(
         summary_tags_evaluated: false,
     };
     store.put_json(&summary_key(video_id), &summary).await?;
-    // Reset auto_regen_attempts
-    store
-        .delete_key(&format!("meta/auto-regen-attempts/{video_id}"))
-        .await
-        .ok();
+    // A hand-written summary replaces any automatic regeneration in progress.
+    reset_summary_auto_regen_attempts(store, video_id).await?;
+    clear_summary_evaluation_failures(store, video_id).await?;
+    discard_summary_before_regeneration(store, video_id).await?;
     super::videos::update_video_summary_status(store, video_id, ContentStatus::Ready).await?;
     Ok(summary)
 }
 
+/// Stores an evaluation on the summary, but only when the stored summary is still
+/// the text that was evaluated. Returns `false` (and changes nothing) when the
+/// summary is gone or was replaced while the evaluator was running.
 pub async fn update_summary_quality(
     store: &Store,
     video_id: &str,
+    evaluated_content: &str,
     quality_score: Option<u8>,
     quality_note: Option<&str>,
     quality_model_used: Option<&str>,
     summary_tags: Option<&[String]>,
-) -> Result<(), StoreError> {
+) -> Result<bool, StoreError> {
     let key = summary_key(video_id);
-    if let Some(mut summary) = store.get_json::<Summary>(&key).await? {
-        apply_summary_quality_update(
-            &mut summary,
-            quality_score,
-            quality_note,
-            quality_model_used,
-            summary_tags,
-        );
-        store.put_json(&key, &summary).await?;
+    let Some(mut summary) = store.get_json::<Summary>(&key).await? else {
+        return Ok(false);
+    };
+    if summary.content != evaluated_content {
+        return Ok(false);
     }
+    apply_summary_quality_update(
+        &mut summary,
+        quality_score,
+        quality_note,
+        quality_model_used,
+        summary_tags,
+    );
+    store.put_json(&key, &summary).await?;
+    Ok(true)
+}
+
+const EVALUATION_FAILURES_PREFIX: &str = "meta/summary-eval-failures/";
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct EvaluationFailures {
+    #[serde(default)]
+    video_id: String,
+    /// Hash of the summary text that failed. A new summary starts a new count.
+    summary_hash: String,
+    /// Every failed attempt. Used to put failing summaries behind the others.
+    #[serde(default)]
+    failed_attempts: u8,
+    /// Attempts where the model answered but the answer was unusable. These
+    /// count toward the limit after which the summary is marked unscorable.
+    #[serde(default)]
+    unusable_answers: u8,
+}
+
+/// What happened after an evaluation attempt failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SummaryEvaluationFailureOutcome {
+    /// The evaluation will be tried again on a later scan.
+    WillRetry { failed_attempts: u8 },
+    /// The limit was reached. The summary now carries an "unscorable" note so the
+    /// scan stops picking it.
+    GaveUp { unusable_answers: u8 },
+    /// The summary changed while the evaluator ran. Nothing was counted.
+    SummaryChanged,
+}
+
+/// How the evaluation attempt failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SummaryEvaluationFailureKind {
+    /// The model answered, but the answer could not be used. Counts toward the limit.
+    UnusableAnswer,
+    /// The request itself failed (timeout, HTTP error). Retried without a limit.
+    RequestFailed,
+}
+
+async fn get_evaluation_failures(
+    store: &Store,
+    video_id: &str,
+    summary_content: &str,
+) -> Result<EvaluationFailures, StoreError> {
+    let meta: Option<EvaluationFailures> =
+        store.get_json(&evaluation_failures_key(video_id)).await?;
+    Ok(meta
+        .filter(|meta| meta.summary_hash == hash_search_content(summary_content))
+        .unwrap_or_default())
+}
+
+/// Failed evaluation attempts for the summary text currently stored.
+pub async fn get_summary_evaluation_failures(
+    store: &Store,
+    video_id: &str,
+    summary_content: &str,
+) -> Result<u8, StoreError> {
+    Ok(get_evaluation_failures(store, video_id, summary_content)
+        .await?
+        .failed_attempts)
+}
+
+/// Failed attempt counts by video id and summary hash, read in one listing.
+async fn load_evaluation_failures(
+    store: &Store,
+) -> Result<std::collections::HashMap<String, EvaluationFailures>, StoreError> {
+    let entries: Vec<EvaluationFailures> = store.load_all(EVALUATION_FAILURES_PREFIX).await?;
+    Ok(entries
+        .into_iter()
+        .filter(|entry| !entry.video_id.is_empty())
+        .map(|entry| (entry.video_id.clone(), entry))
+        .collect())
+}
+
+pub async fn record_summary_evaluation_failure(
+    store: &Store,
+    video_id: &str,
+    evaluated_content: &str,
+    error: &str,
+    kind: SummaryEvaluationFailureKind,
+    max_unusable_answers: u8,
+) -> Result<SummaryEvaluationFailureOutcome, StoreError> {
+    let current = get_summary(store, video_id).await?;
+    if current.as_ref().map(|summary| summary.content.as_str()) != Some(evaluated_content) {
+        return Ok(SummaryEvaluationFailureOutcome::SummaryChanged);
+    }
+
+    let mut meta = get_evaluation_failures(store, video_id, evaluated_content).await?;
+    meta.video_id = video_id.to_string();
+    meta.summary_hash = hash_search_content(evaluated_content);
+    meta.failed_attempts = meta.failed_attempts.saturating_add(1);
+    if kind == SummaryEvaluationFailureKind::UnusableAnswer {
+        meta.unusable_answers = meta.unusable_answers.saturating_add(1);
+    }
+
+    if meta.unusable_answers < max_unusable_answers {
+        store
+            .put_json(&evaluation_failures_key(video_id), &meta)
+            .await?;
+        return Ok(SummaryEvaluationFailureOutcome::WillRetry {
+            failed_attempts: meta.failed_attempts,
+        });
+    }
+
+    let note = format!(
+        "**Unscorable**:\n- The evaluator gave {} unusable answers, so this summary was not scored. Last error: {}",
+        meta.unusable_answers,
+        error.trim()
+    );
+    let stored = update_summary_quality(
+        store,
+        video_id,
+        evaluated_content,
+        None,
+        Some(&note),
+        None,
+        Some(&[]),
+    )
+    .await?;
+    clear_summary_evaluation_failures(store, video_id).await?;
+    if !stored {
+        return Ok(SummaryEvaluationFailureOutcome::SummaryChanged);
+    }
+    Ok(SummaryEvaluationFailureOutcome::GaveUp {
+        unusable_answers: meta.unusable_answers,
+    })
+}
+
+pub async fn clear_summary_evaluation_failures(
+    store: &Store,
+    video_id: &str,
+) -> Result<(), StoreError> {
+    store
+        .delete_key(&evaluation_failures_key(video_id))
+        .await
+        .ok();
+    Ok(())
+}
+
+/// Keeps a copy of the current summary (with its score) before an automatic
+/// regeneration, so a worse replacement can be undone.
+pub async fn save_summary_before_regeneration(
+    store: &Store,
+    summary: &Summary,
+) -> Result<(), StoreError> {
+    store
+        .put_json(&summary_before_regeneration_key(&summary.video_id), summary)
+        .await
+}
+
+/// Returns and removes the copy saved by [`save_summary_before_regeneration`].
+pub async fn take_summary_before_regeneration(
+    store: &Store,
+    video_id: &str,
+) -> Result<Option<Summary>, StoreError> {
+    let key = summary_before_regeneration_key(video_id);
+    let summary: Option<Summary> = store.get_json(&key).await?;
+    if summary.is_some() {
+        store.delete_key(&key).await?;
+    }
+    Ok(summary)
+}
+
+pub async fn discard_summary_before_regeneration(
+    store: &Store,
+    video_id: &str,
+) -> Result<(), StoreError> {
+    store
+        .delete_key(&summary_before_regeneration_key(video_id))
+        .await
+        .ok();
     Ok(())
 }
 
@@ -190,9 +389,7 @@ pub async fn get_summary_auto_regen_attempts(
     store: &Store,
     video_id: &str,
 ) -> Result<u8, StoreError> {
-    let meta: Option<AutoRegenMeta> = store
-        .get_json(&format!("meta/auto-regen-attempts/{video_id}"))
-        .await?;
+    let meta: Option<AutoRegenMeta> = store.get_json(&auto_regen_attempts_key(video_id)).await?;
     Ok(meta.map(|m| m.attempts).unwrap_or(0))
 }
 
@@ -201,7 +398,7 @@ pub async fn reset_summary_auto_regen_attempts(
     video_id: &str,
 ) -> Result<(), StoreError> {
     store
-        .delete_key(&format!("meta/auto-regen-attempts/{video_id}"))
+        .delete_key(&auto_regen_attempts_key(video_id))
         .await
         .ok();
     Ok(())
@@ -214,7 +411,7 @@ pub async fn increment_summary_auto_regen_attempts(
     let current = get_summary_auto_regen_attempts(store, video_id).await?;
     store
         .put_json(
-            &format!("meta/auto-regen-attempts/{video_id}"),
+            &auto_regen_attempts_key(video_id),
             &AutoRegenMeta {
                 attempts: current.saturating_add(1),
             },
@@ -224,6 +421,8 @@ pub async fn increment_summary_auto_regen_attempts(
 
 pub async fn delete_summary(store: &Store, video_id: &str) -> Result<bool, StoreError> {
     super::search::clear_search_source(store, video_id, SearchSourceKind::Summary).await?;
+    clear_summary_evaluation_failures(store, video_id).await?;
+    discard_summary_before_regeneration(store, video_id).await?;
     let key = summary_key(video_id);
     let exists = store.key_exists(&key).await?;
     if exists {
@@ -242,12 +441,17 @@ pub async fn delete_transcript(store: &Store, video_id: &str) -> Result<bool, St
     Ok(exists)
 }
 
+/// Summaries that still need an evaluation, at most `limit`.
+///
+/// Order: summaries with fewer failed evaluation attempts first, then newer videos
+/// first. A few summaries that keep failing can no longer block everything else.
 pub async fn list_summaries_pending_quality_eval(
     store: &Store,
     limit: usize,
 ) -> Result<Vec<SummaryEvaluationJob>, StoreError> {
     let summaries: Vec<Summary> = store.load_all("summaries/").await?;
-    let mut results = Vec::new();
+    let failures = load_evaluation_failures(store).await?;
+    let mut candidates = Vec::new();
 
     for summary in summaries {
         if !summary_needs_quality_eval(&summary) {
@@ -265,14 +469,30 @@ pub async fn list_summaries_pending_quality_eval(
             continue;
         }
 
-        let transcript = store
-            .get_json::<crate::models::Transcript>(&format!(
-                "transcripts/{}.json",
-                summary.video_id
-            ))
-            .await?;
-        let transcript_text = transcript
-            .and_then(|t| t.raw_text.or(t.formatted_markdown))
+        let failed_attempts = failures
+            .get(&summary.video_id)
+            .filter(|meta| meta.summary_hash == hash_search_content(&summary.content))
+            .map(|meta| meta.failed_attempts)
+            .unwrap_or(0);
+        candidates.push((failed_attempts, video, summary));
+    }
+
+    candidates.sort_by(|(failures_a, video_a, _), (failures_b, video_b, _)| {
+        failures_a
+            .cmp(failures_b)
+            .then_with(|| video_b.published_at.cmp(&video_a.published_at))
+    });
+
+    let mut results = Vec::new();
+    for (_, video, summary) in candidates {
+        let transcript_text = get_transcript(store, &summary.video_id)
+            .await?
+            .and_then(|t| {
+                [t.raw_text, t.formatted_markdown]
+                    .into_iter()
+                    .flatten()
+                    .find(|text| !text.trim().is_empty())
+            })
             .unwrap_or_default();
         if transcript_text.trim().is_empty() {
             continue;
