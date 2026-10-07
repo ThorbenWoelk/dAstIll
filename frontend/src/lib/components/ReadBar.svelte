@@ -32,16 +32,29 @@
 </div>
 
 <style>
+  /* Phones: sticks just above the tab bar, and to the screen edge once it tucks away. */
   .read-bar {
     position: sticky;
-    bottom: 0;
+    bottom: var(--tab-bar-offset, 0px);
     z-index: 1;
     display: flex;
     gap: var(--space-2);
     margin-top: var(--space-6);
-    padding: var(--space-3) 0 max(var(--space-3), env(safe-area-inset-bottom));
+    padding: var(--space-3) 0
+      max(
+        var(--space-3),
+        calc(env(safe-area-inset-bottom) - var(--tab-bar-offset, 0px))
+      );
     border-top: 1px solid var(--rule);
     background: var(--paper);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .read-bar {
+      transition:
+        bottom var(--tuck-ms) ease,
+        padding-bottom var(--tuck-ms) ease;
+    }
   }
 
   .press {

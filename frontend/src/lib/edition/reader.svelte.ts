@@ -11,9 +11,12 @@ import {
   FRONT_PAGE,
   insertStory,
   listSections,
+  locateStory,
   storiesInSection,
+  storyAfterFinishing,
   type SectionId,
   type Story,
+  type TurnDirection,
 } from "$lib/edition/stories";
 
 export type EditionStatus = "loading" | "ready" | "failed";
@@ -45,6 +48,7 @@ export class EditionReader {
 
   visible = $derived(storiesInSection(this.stories, this.section));
   lead = $derived(chooseLeadStory(this.visible, this.pickedId));
+  position = $derived(locateStory(this.visible, this.lead?.id ?? null));
   alsoInEdition = $derived(
     this.visible
       .filter((story) => story.id !== this.lead?.id)
@@ -137,12 +141,25 @@ export class EditionReader {
     this.pickedId = storyId;
   }
 
+  canTurn(direction: TurnDirection): boolean {
+    return this.position[direction] !== null;
+  }
+
+  /** Lead with the story after or before this one. Nothing is marked read. */
+  turn(direction: TurnDirection): boolean {
+    const story = this.position[direction];
+    if (!story) return false;
+    this.pickedId = story.id;
+    return true;
+  }
+
   async markLeadRead() {
     const story = this.lead;
     if (!story) return;
+    const following = storyAfterFinishing(this.visible, story.id);
     this.stories = this.stories.filter((s) => s.id !== story.id);
     this.lastRead = story;
-    this.pickedId = null;
+    this.pickedId = following;
     this.#pendingRead.add(story.id);
     this.#remember();
     try {
@@ -150,6 +167,8 @@ export class EditionReader {
     } catch (cause) {
       this.stories = insertStory(this.stories, story);
       if (this.lastRead?.id === story.id) this.lastRead = null;
+      // Still on the story that took its place: put it back on the page.
+      if (this.pickedId === following) this.pickedId = story.id;
       this.notice = `Could not mark as read: ${messageOf(cause)}`;
       this.#remember();
     } finally {

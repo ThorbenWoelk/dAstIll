@@ -36,6 +36,11 @@
   --column: 1120px;
   --measure: 68ch;
   --touch: 44px;
+
+  /* The phone tab bar, without the safe area under it. */
+  --tab-bar: 48px;
+  /* How fast the tab bar and section bar tuck away and come back. */
+  --tuck-ms: 200ms;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -169,12 +174,43 @@ a {
   .print-in {
     animation: print-in 360ms ease-out both;
   }
+
+  /* A story turned to with a swipe, the pager, or the arrow keys. */
+  .turn-in-next {
+    animation: turn-in-next 240ms ease-out both;
+  }
+
+  .turn-in-previous {
+    animation: turn-in-previous 240ms ease-out both;
+  }
 }
 
 @keyframes print-in {
   from {
     opacity: 0;
     transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes turn-in-next {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes turn-in-previous {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
   }
   to {
     opacity: 1;

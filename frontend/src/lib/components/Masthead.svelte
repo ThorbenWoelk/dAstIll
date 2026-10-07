@@ -4,8 +4,7 @@
     describeEditionDate,
     describeShortEditionDate,
   } from "$lib/edition/stories";
-
-  type PaperPage = "front-page" | "highlights" | "finished" | "sections";
+  import { PAPER_PAGES, type PaperPage } from "$lib/navigation/pages";
 
   let {
     status = "",
@@ -20,15 +19,9 @@
     /** Signed-out readers see no page links. */
     signedIn?: boolean;
     actions?: Snippet;
+    /** Rendered under the masthead, outside it, so it can stick on phones. */
     nav?: Snippet;
   } = $props();
-
-  const PAGES: { id: PaperPage; name: string; href: string }[] = [
-    { id: "front-page", name: "Front page", href: "/" },
-    { id: "highlights", name: "Highlights", href: "/highlights" },
-    { id: "finished", name: "Finished", href: "/finished" },
-    { id: "sections", name: "Sections", href: "/sections" },
-  ];
 
   const today = new Date();
 </script>
@@ -43,26 +36,28 @@
       {#if status}<span aria-live="polite">· {status}</span>{/if}
     </p>
     {#if signedIn}
-      <nav class="dateline-end" aria-label="Pages">
+      <div class="dateline-end">
         {@render actions?.()}
-        {#each PAGES as page (page.id)}
-          {#if page.id !== "front-page" || current !== "front-page"}
+        <!-- A tab bar along the bottom on phones, links in the dateline from 640px. -->
+        <nav class="pages" aria-label="Pages">
+          {#each PAPER_PAGES as page (page.id)}
             <a
-              class="text-button"
               href={page.href}
+              class:own-front-page={page.id === "front-page" &&
+                current === "front-page"}
               aria-current={page.id === current ? "page" : undefined}
             >
               {page.name}
             </a>
-          {/if}
-        {/each}
-      </nav>
+          {/each}
+        </nav>
+      </div>
     {/if}
   </div>
   <a class="title" href="/">dAstIll</a>
   <div class="double-rule" aria-hidden="true"></div>
-  {@render nav?.()}
 </header>
+{@render nav?.()}
 
 <style>
   .masthead {
@@ -95,10 +90,47 @@
     margin-left: auto;
   }
 
-  .dateline-end [aria-current="page"] {
-    color: var(--ink);
+  /* Phones: a tab bar in thumb reach. It tucks away while reading down. */
+  .pages {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10;
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    padding: 0 var(--space-2) env(safe-area-inset-bottom);
+    border-top: 1px solid var(--rule);
+    background: var(--paper);
+    transform: translateY(calc(var(--tucked, 0) * 100%));
+  }
+
+  .pages a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--tab-bar);
+    margin-top: -1px;
+    border-top: 2px solid transparent;
+    font-size: 10px;
     font-weight: 700;
+    letter-spacing: 0.08em;
+    text-align: center;
     text-decoration: none;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  .pages a[aria-current="page"] {
+    border-top-color: var(--kicker);
+    color: var(--kicker);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .pages {
+      transition: transform var(--tuck-ms) ease;
+    }
   }
 
   .long-date {
@@ -133,6 +165,45 @@
     .title {
       padding: var(--space-2) 0 var(--space-4);
       font-size: 64px;
+    }
+
+    /* Wider screens: quiet links in the dateline, set like .text-button. */
+    .pages {
+      position: static;
+      display: flex;
+      gap: var(--space-3);
+      padding: 0;
+      border-top: 0;
+      background: none;
+      transform: none;
+      transition: none;
+    }
+
+    .pages a {
+      min-height: var(--touch);
+      margin-top: 0;
+      border-top: 0;
+      font-size: 12px;
+      font-weight: 400;
+      letter-spacing: 0;
+      text-decoration: underline;
+      text-transform: none;
+      text-underline-offset: 3px;
+    }
+
+    .pages a:hover {
+      color: var(--ink);
+    }
+
+    .pages a[aria-current="page"] {
+      color: var(--ink);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    /* The front page does not link to itself. */
+    .pages .own-front-page {
+      display: none;
     }
   }
 </style>

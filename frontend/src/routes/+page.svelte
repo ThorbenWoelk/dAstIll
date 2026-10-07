@@ -7,14 +7,23 @@
   import ReadBar from "$lib/components/ReadBar.svelte";
   import SectionNav from "$lib/components/SectionNav.svelte";
   import StoryArticle from "$lib/components/StoryArticle.svelte";
+  import StoryPager from "$lib/components/StoryPager.svelte";
   import { EditionReader } from "$lib/edition/reader.svelte";
   import { StoryHighlights } from "$lib/highlights/story-highlights.svelte";
-  import { describeStoriesLeft, FRONT_PAGE } from "$lib/edition/stories";
+  import {
+    describeStoriesLeft,
+    FRONT_PAGE,
+    type SectionId,
+    type TurnDirection,
+  } from "$lib/edition/stories";
+  import { storySwipe } from "$lib/navigation/story-swipe";
   import { session } from "$lib/session.svelte";
 
   // The layout renders this page only for a signed-in reader.
   const reader = new EditionReader(session.reader?.uid ?? "unknown");
   const highlights = new StoryHighlights();
+  /** How the next lead story arrives on the page. */
+  let entrance = $state<"print" | TurnDirection>("print");
 
   onMount(() => {
     void reader.refresh();
@@ -30,17 +39,33 @@
   }
 
   function markAsRead() {
+    entrance = "print";
     void reader.markLeadRead();
     backToTop();
   }
 
   function undoLastRead() {
+    entrance = "print";
     void reader.undoLastRead();
     backToTop();
   }
 
   function pickStory(storyId: string) {
+    entrance = "print";
     reader.pick(storyId);
+    backToTop();
+  }
+
+  /** Swipe, pager, and arrow keys: browse the section without reading. */
+  function turn(direction: TurnDirection) {
+    if (!reader.turn(direction)) return;
+    entrance = direction;
+    backToTop();
+  }
+
+  function chooseSection(section: SectionId) {
+    entrance = "print";
+    reader.showSection(section);
     backToTop();
   }
 
@@ -52,8 +77,13 @@
     );
   }
 
+  const NEXT_KEYS = ["ArrowRight", "j"];
+  const PREVIOUS_KEYS = ["ArrowLeft", "k"];
+
   function handleShortcut(event: KeyboardEvent) {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+      return;
+    }
     if (event.defaultPrevented || isTyping(event.target)) return;
     if (event.key === "r" && reader.lead) {
       event.preventDefault();
@@ -61,6 +91,15 @@
     } else if (event.key === "u" && reader.lastRead) {
       event.preventDefault();
       undoLastRead();
+    } else if (NEXT_KEYS.includes(event.key) && reader.canTurn("next")) {
+      event.preventDefault();
+      turn("next");
+    } else if (
+      PREVIOUS_KEYS.includes(event.key) &&
+      reader.canTurn("previous")
+    ) {
+      event.preventDefault();
+      turn("previous");
     }
   }
 
@@ -97,7 +136,7 @@
       <SectionNav
         sections={reader.sections}
         active={reader.section}
-        onSelect={(section) => reader.showSection(section)}
+        onSelect={chooseSection}
       />
     {/if}
   {/snippet}
@@ -136,20 +175,29 @@
   {@const lead = reader.lead}
   <div class="spread">
     <div class="lead">
-      <StoryArticle
-        story={reader.lead}
-        highlights={highlights.items}
-        onHighlight={(draft) => highlights.add(lead.id, draft)}
-        onRemoveHighlight={(id) => highlights.remove(lead.id, id)}
+      <StoryPager position={reader.position} onTurn={turn} />
+      <div
+        {@attach storySwipe({
+          canGo: (direction) => reader.canTurn(direction),
+          go: turn,
+        })}
       >
-        {#snippet footer()}
-          <ReadBar
-            undoTitle={reader.lastRead?.title ?? null}
-            onRead={markAsRead}
-            onUndo={undoLastRead}
-          />
-        {/snippet}
-      </StoryArticle>
+        <StoryArticle
+          story={reader.lead}
+          {entrance}
+          highlights={highlights.items}
+          onHighlight={(draft) => highlights.add(lead.id, draft)}
+          onRemoveHighlight={(id) => highlights.remove(lead.id, id)}
+        >
+          {#snippet footer()}
+            <ReadBar
+              undoTitle={reader.lastRead?.title ?? null}
+              onRead={markAsRead}
+              onUndo={undoLastRead}
+            />
+          {/snippet}
+        </StoryArticle>
+      </div>
     </div>
     <div class="rail">
       <AlsoInEdition
@@ -173,7 +221,7 @@
         <button
           type="button"
           class="press"
-          onclick={() => reader.showSection(FRONT_PAGE)}
+          onclick={() => chooseSection(FRONT_PAGE)}
         >
           Front page ({reader.stories.length})
         </button>
