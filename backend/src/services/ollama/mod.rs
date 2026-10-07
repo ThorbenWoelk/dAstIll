@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::timeout;
 use tracing::Instrument;
@@ -19,6 +19,10 @@ use crate::services::http::{
 };
 
 pub const CLOUD_PROMPT_TIMEOUT_SECS: u64 = 300;
+const CLOUD_PROMPT_TIMEOUT: Duration = Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS);
+
+/// Ollama's `done_reason` when generation stopped at the output token limit.
+pub const DONE_REASON_LENGTH: &str = "length";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CooldownStatusPolicy {
@@ -51,19 +55,95 @@ struct OllamaGenerateRequest<'a> {
     system: &'a str,
     prompt: &'a str,
     stream: bool,
-    format: &'a Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<&'a Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    think: Option<bool>,
     options: OllamaGenerateOptions,
 }
 
 #[derive(Debug, Serialize)]
 struct OllamaGenerateOptions {
-    temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_ctx: Option<u32>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct OllamaGenerateResponse {
     response: Option<String>,
     error: Option<String>,
+    #[serde(default)]
+    done_reason: Option<String>,
+}
+
+/// Per-call settings for Ollama `/api/generate`.
+#[derive(Debug, Clone, Copy)]
+struct GenerateSettings<'a> {
+    format: Option<&'a Value>,
+    think: Option<bool>,
+    temperature: Option<f32>,
+    timeout: Duration,
+    local_context_tokens: Option<u32>,
+}
+
+/// Settings for a plain-text prompt sent through [`OllamaCore::prompt_text_with_fallback`].
+#[derive(Debug, Clone, Copy)]
+pub struct TextPromptSettings {
+    /// Request timeout for one model call.
+    pub timeout: Duration,
+    /// Context window (`num_ctx`) to request from local models. Cloud models ignore this
+    /// option, so it is only sent to models without a cloud tag.
+    pub local_context_tokens: Option<u32>,
+}
+
+/// A plain-text model reply together with Ollama's stop reason.
+#[derive(Debug, Clone)]
+pub struct TextPromptReply {
+    pub text: String,
+    pub model_used: String,
+    /// `stop` for a normal end, `length` when the output hit the token limit.
+    pub done_reason: Option<String>,
+}
+
+impl TextPromptReply {
+    /// True when Ollama stopped because the output reached its token limit.
+    pub fn hit_output_limit(&self) -> bool {
+        self.done_reason.as_deref() == Some(DONE_REASON_LENGTH)
+    }
+}
+
+#[derive(Debug)]
+struct GenerateReply {
+    text: String,
+    done_reason: Option<String>,
+}
+
+/// Build the `/api/generate` request body for one model call.
+fn build_generate_request<'a>(
+    model: &'a str,
+    preamble: &'a str,
+    prompt: &'a str,
+    settings: &GenerateSettings<'a>,
+) -> OllamaGenerateRequest<'a> {
+    let num_ctx = if is_cloud_model(model) {
+        None
+    } else {
+        settings.local_context_tokens
+    };
+    OllamaGenerateRequest {
+        model,
+        system: preamble,
+        prompt,
+        stream: false,
+        format: settings.format,
+        think: settings.think,
+        options: OllamaGenerateOptions {
+            temperature: settings.temperature,
+            num_ctx,
+        },
+    }
 }
 
 /// Shared configuration and low-level helpers for Ollama-backed services.
@@ -440,38 +520,79 @@ impl OllamaCore {
     where
         T: DeserializeOwned,
     {
-        let (response, model_used) = self
-            .prompt_generate_with_schema(operation, preamble, prompt, schema, policy)
+        let settings = GenerateSettings {
+            format: Some(schema),
+            think: None,
+            temperature: Some(0.0),
+            timeout: CLOUD_PROMPT_TIMEOUT,
+            local_context_tokens: None,
+        };
+        let (reply, model_used) = self
+            .prompt_generate_with_fallback(operation, preamble, prompt, settings, policy)
             .await?;
-        let parsed = parse_structured_response(&response)?;
+        let parsed = parse_structured_response(&reply.text)?;
         Ok((parsed, model_used))
     }
 
-    async fn prompt_generate_with_schema(
+    /// Prompt the configured model for plain text through `/api/generate`, with the same
+    /// fallback and cooldown handling as [`Self::prompt_with_fallback`].
+    ///
+    /// Unlike the rig-based path, the reply carries Ollama's `done_reason`, so callers can
+    /// detect output that stopped at the token limit.
+    pub async fn prompt_text_with_fallback(
         &self,
         operation: &str,
         preamble: &str,
         prompt: &str,
-        schema: &Value,
+        text_settings: TextPromptSettings,
         policy: CooldownStatusPolicy,
-    ) -> Result<(String, String), OllamaPromptError> {
+    ) -> Result<TextPromptReply, OllamaPromptError> {
+        let settings = GenerateSettings {
+            format: None,
+            // Keep reasoning out of the reply text. Models that still think aloud are
+            // cleaned up by the caller.
+            think: Some(false),
+            temperature: None,
+            timeout: text_settings.timeout,
+            local_context_tokens: text_settings.local_context_tokens,
+        };
+        let (reply, model_used) = self
+            .prompt_generate_with_fallback(operation, preamble, prompt, settings, policy)
+            .await?;
+        Ok(TextPromptReply {
+            text: reply.text,
+            model_used,
+            done_reason: reply.done_reason,
+        })
+    }
+
+    async fn prompt_generate_with_fallback(
+        &self,
+        operation: &str,
+        preamble: &str,
+        prompt: &str,
+        settings: GenerateSettings<'_>,
+        policy: CooldownStatusPolicy,
+    ) -> Result<(GenerateReply, String), OllamaPromptError> {
         let span = logfire::span!(
-            "ollama.prompt.schema",
+            "ollama.prompt.generate",
+            structured = settings.format.is_some(),
             operation = operation,
             model = self.model().to_string(),
             base_url = self.base_url().to_string(),
             prompt_chars = prompt.chars().count(),
+            timeout_secs = settings.timeout.as_secs(),
             cooldown_policy = format!("{policy:?}"),
             fallback_configured = self.fallback_model().is_some(),
         );
 
         async move {
             let started = Instant::now();
-            let result: Result<(String, String), OllamaPromptError> = async {
+            let result: Result<(GenerateReply, String), OllamaPromptError> = async {
                 let is_cloud = self.uses_cloud_model();
                 let cooldown_active = self.is_cloud_cooldown_active();
 
-                let (response, model_used) = if cooldown_active {
+                let (reply, model_used) = if cooldown_active {
                     match policy {
                         CooldownStatusPolicy::UseLocalFallback => {
                             let fallback = self.fallback_model().ok_or_else(|| {
@@ -483,25 +604,20 @@ impl OllamaCore {
                                 fallback_model = %fallback,
                                 "skipping cloud model due to active cooldown"
                             );
-                            let resp = self
-                                .prompt_generate_once(fallback, preamble, prompt, schema)
+                            let reply = self
+                                .prompt_generate_once(fallback, preamble, prompt, &settings)
                                 .await
-                                .map_err(|error| match error {
-                                    OllamaGenerateCallError::RateLimited(message)
-                                    | OllamaGenerateCallError::Failed(message) => {
-                                        OllamaPromptError::GenerationFailed(message)
-                                    }
-                                })?;
-                            (resp, fallback.to_string())
+                                .map_err(generate_call_error_into_prompt_error)?;
+                            (reply, fallback.to_string())
                         }
                         CooldownStatusPolicy::Offline => return Err(OllamaPromptError::NotAvailable),
                     }
                 } else {
                     match self
-                        .prompt_generate_once(self.model(), preamble, prompt, schema)
+                        .prompt_generate_once(self.model(), preamble, prompt, &settings)
                         .await
                     {
-                        Ok(resp) => (resp, self.model().to_string()),
+                        Ok(reply) => (reply, self.model().to_string()),
                         Err(OllamaGenerateCallError::RateLimited(message)) => {
                             if is_cloud {
                                 self.activate_cloud_cooldown();
@@ -520,16 +636,11 @@ impl OllamaCore {
                                         error = %message,
                                         "rate limited - falling back to local model"
                                     );
-                                    let resp = self
-                                        .prompt_generate_once(fallback, preamble, prompt, schema)
+                                    let reply = self
+                                        .prompt_generate_once(fallback, preamble, prompt, &settings)
                                         .await
-                                        .map_err(|error| match error {
-                                            OllamaGenerateCallError::RateLimited(message)
-                                            | OllamaGenerateCallError::Failed(message) => {
-                                                OllamaPromptError::GenerationFailed(message)
-                                            }
-                                        })?;
-                                    (resp, fallback.to_string())
+                                        .map_err(generate_call_error_into_prompt_error)?;
+                                    (reply, fallback.to_string())
                                 }
                                 CooldownStatusPolicy::Offline => {
                                     if is_cloud {
@@ -550,24 +661,25 @@ impl OllamaCore {
                     }
                 };
 
-                if response.trim().is_empty() {
+                if reply.text.trim().is_empty() {
                     return Err(OllamaPromptError::EmptyResponse);
                 }
 
-                Ok((response, model_used))
+                Ok((reply, model_used))
             }
             .await;
 
             match result {
-                Ok((response, model_used)) => {
+                Ok((reply, model_used)) => {
                     tracing::info!(
                         operation = operation,
                         model = %model_used,
-                        response_chars = response.len(),
+                        response_chars = reply.text.len(),
+                        done_reason = reply.done_reason.as_deref().unwrap_or("-"),
                         elapsed_ms = started.elapsed().as_millis() as u64,
-                        "completed structured ollama prompt"
+                        "completed ollama generate prompt"
                     );
-                    Ok((response, model_used))
+                    Ok((reply, model_used))
                 }
                 Err(error) => {
                     tracing::error!(
@@ -575,7 +687,7 @@ impl OllamaCore {
                         primary_model = %self.model(),
                         elapsed_ms = started.elapsed().as_millis() as u64,
                         error = ?error,
-                        "structured ollama prompt failed"
+                        "ollama generate prompt failed"
                     );
                     Err(error)
                 }
@@ -590,38 +702,31 @@ impl OllamaCore {
         model: &str,
         preamble: &str,
         prompt: &str,
-        schema: &Value,
-    ) -> Result<String, OllamaGenerateCallError> {
+        settings: &GenerateSettings<'_>,
+    ) -> Result<GenerateReply, OllamaGenerateCallError> {
         let _permit = self
             .acquire_local_permit(model)
             .await
             .map_err(OllamaGenerateCallError::Failed)?;
 
-        let request = OllamaGenerateRequest {
-            model,
-            system: preamble,
-            prompt,
-            stream: false,
-            format: schema,
-            options: OllamaGenerateOptions { temperature: 0.0 },
-        };
+        let request = build_generate_request(model, preamble, prompt, settings);
 
         let response = self
             .auth(
                 self.client
                     .post(format!("{}/api/generate", self.base_url))
-                    .timeout(std::time::Duration::from_secs(CLOUD_PROMPT_TIMEOUT_SECS))
+                    .timeout(settings.timeout)
                     .json(&request),
             )
             .send()
             .await
-            .map_err(|error| OllamaGenerateCallError::Failed(error.to_string()))?;
+            .map_err(|error| request_error_into_call_error(error, settings.timeout))?;
 
         let status = response.status();
         let body = response
             .text()
             .await
-            .map_err(|error| OllamaGenerateCallError::Failed(error.to_string()))?;
+            .map_err(|error| request_error_into_call_error(error, settings.timeout))?;
         if !status.is_success() {
             let message = format!("Ollama generate request failed ({status}): {body}");
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS
@@ -632,15 +737,44 @@ impl OllamaCore {
             return Err(OllamaGenerateCallError::Failed(message));
         }
 
-        let payload = serde_json::from_str::<OllamaGenerateResponse>(&body)
-            .map_err(|error| OllamaGenerateCallError::Failed(error.to_string()))?;
-        if let Some(error) = payload.error.filter(|value| !value.trim().is_empty()) {
-            return Err(OllamaGenerateCallError::Failed(error));
-        }
-        payload
-            .response
-            .ok_or_else(|| OllamaGenerateCallError::Failed("missing response".to_string()))
+        parse_generate_response_body(&body)
     }
+}
+
+fn generate_call_error_into_prompt_error(error: OllamaGenerateCallError) -> OllamaPromptError {
+    match error {
+        OllamaGenerateCallError::RateLimited(message)
+        | OllamaGenerateCallError::Failed(message) => OllamaPromptError::GenerationFailed(message),
+    }
+}
+
+fn request_error_into_call_error(
+    error: reqwest::Error,
+    limit: Duration,
+) -> OllamaGenerateCallError {
+    if error.is_timeout() {
+        OllamaGenerateCallError::Failed(format!(
+            "Ollama prompt timed out after {}s",
+            limit.as_secs()
+        ))
+    } else {
+        OllamaGenerateCallError::Failed(error.to_string())
+    }
+}
+
+fn parse_generate_response_body(body: &str) -> Result<GenerateReply, OllamaGenerateCallError> {
+    let payload = serde_json::from_str::<OllamaGenerateResponse>(body)
+        .map_err(|error| OllamaGenerateCallError::Failed(error.to_string()))?;
+    if let Some(error) = payload.error.filter(|value| !value.trim().is_empty()) {
+        return Err(OllamaGenerateCallError::Failed(error));
+    }
+    let text = payload
+        .response
+        .ok_or_else(|| OllamaGenerateCallError::Failed("missing response".to_string()))?;
+    Ok(GenerateReply {
+        text,
+        done_reason: payload.done_reason,
+    })
 }
 
 fn parse_structured_response<T: DeserializeOwned>(response: &str) -> Result<T, OllamaPromptError> {

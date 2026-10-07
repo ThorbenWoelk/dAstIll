@@ -1,5 +1,8 @@
+mod output;
 mod prompts;
 mod transcript_compare;
+mod transcript_size;
+mod vocabulary;
 
 use std::time::Duration;
 use thiserror::Error;
@@ -10,46 +13,23 @@ use crate::models::{AiStatus, VocabularyReplacement};
 use crate::services::http::is_provider_capacity_limited_message;
 use crate::services::ollama::{
     CLOUD_PROMPT_TIMEOUT_SECS, CooldownStatusPolicy, OllamaCore, OllamaPromptError,
+    TextPromptSettings,
 };
 
+pub use output::SummaryOutputProblem;
+use output::{check_summary_output, clean_summary_output};
 use prompts::{
     SUMMARY_PREAMBLE, TRANSCRIPT_CLEAN_PREAMBLE, build_clean_transcript_prompt,
     build_summary_prompt,
 };
-use transcript_compare::{
-    build_retry_feedback, detect_transcript_mismatch, strip_summary_title_heading,
-};
-
-fn normalize_vocabulary_entry(value: &str) -> Option<&str> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    }
-}
-
-pub(crate) fn apply_vocabulary_replacements(
-    transcript: &str,
-    replacements: &[VocabularyReplacement],
-) -> String {
-    let mut normalized = transcript.to_string();
-
-    for replacement in replacements {
-        let Some(from) = normalize_vocabulary_entry(&replacement.from) else {
-            continue;
-        };
-        let Some(to) = normalize_vocabulary_entry(&replacement.to) else {
-            continue;
-        };
-        if from == to {
-            continue;
-        }
-        normalized = normalized.replace(from, to);
-    }
-
-    normalized
-}
+use transcript_compare::{build_retry_feedback, detect_transcript_mismatch};
+use transcript_size::{count_transcript_words, local_context_tokens, summary_timeout};
+// The summary evaluator should judge the same transcript text the summarizer saw, so it
+// calls `normalize_transcript_vocabulary` too.
+#[allow(unused_imports)]
+pub(crate) use vocabulary::normalize_transcript_vocabulary;
+// Older name of the same function, kept for existing callers.
+pub(crate) use vocabulary::normalize_transcript_vocabulary as apply_vocabulary_replacements;
 
 pub(crate) fn transcript_text_equivalent(input: &str, output: &str) -> bool {
     let expected = input
@@ -88,6 +68,13 @@ pub enum SummarizerError {
     TextChanged {
         attempts_used: usize,
         max_attempts: usize,
+    },
+    /// The model replied, but the reply cannot be stored as a summary. The attempt counts
+    /// as failed so the queue retries it.
+    #[error("Summary output rejected from {model}: {problem}")]
+    RejectedOutput {
+        problem: SummaryOutputProblem,
+        model: String,
     },
     #[error(
         "Transcript formatting timed out after {timeout_secs}s on attempt {attempts_used}/{max_attempts}"
@@ -170,18 +157,56 @@ impl SummarizerService {
 
         async move {
             let started = TokioInstant::now();
+            let word_count = count_transcript_words(transcript);
             let prompt = build_summary_prompt(transcript, video_title, vocabulary_replacements);
+            let settings = TextPromptSettings {
+                timeout: summary_timeout(word_count),
+                local_context_tokens: Some(local_context_tokens(SUMMARY_PREAMBLE, &prompt)),
+            };
 
-            let (raw, model_used) = self
-                .prompt_model(
+            tracing::info!(
+                video_id = video_id,
+                channel_id = channel_id,
+                transcript_words = word_count,
+                timeout_secs = settings.timeout.as_secs(),
+                "starting summary prompt"
+            );
+            let reply = self
+                .core
+                .prompt_text_with_fallback(
                     "summary",
                     SUMMARY_PREAMBLE,
                     &prompt,
-                    Some(video_id),
-                    Some(channel_id),
+                    settings,
+                    CooldownStatusPolicy::UseLocalFallback,
                 )
                 .await?;
-            let summary = strip_summary_title_heading(&raw);
+            let model_used = reply.model_used.clone();
+
+            let summary = if reply.hit_output_limit() {
+                Err(SummaryOutputProblem::HitOutputLimit)
+            } else {
+                let summary = clean_summary_output(&reply.text);
+                let source_text = format!("{video_title}\n{transcript}");
+                check_summary_output(&summary, &source_text).map(|()| summary)
+            };
+            let summary = match summary {
+                Ok(summary) => summary,
+                Err(problem) => {
+                    tracing::warn!(
+                        video_id = video_id,
+                        channel_id = channel_id,
+                        model = %model_used,
+                        problem = %problem,
+                        raw_chars = reply.text.chars().count(),
+                        "summary output rejected"
+                    );
+                    return Err(SummarizerError::RejectedOutput {
+                        problem,
+                        model: model_used,
+                    });
+                }
+            };
 
             tracing::info!(
                 video_id = video_id,
