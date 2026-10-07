@@ -88,6 +88,8 @@ impl Modify for SecurityAddon {
         crate::handlers::auth::redeem_mobile_auth_handoff,
         crate::handlers::mini::get_mini_reader,
         crate::handlers::mini::update_mini_read_status,
+        crate::handlers::mini::list_finished_stories,
+        crate::handlers::mini::get_story,
         crate::handlers::channels::list_channels,
         crate::handlers::channels::add_channel,
         crate::handlers::channels::plan_openalex_query,

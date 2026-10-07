@@ -1,7 +1,15 @@
 import type { Channel } from "$lib/bindings/Channel";
+import type { CreateHighlightRequest } from "$lib/bindings/CreateHighlightRequest";
+import type { Highlight } from "$lib/bindings/Highlight";
+import type { HighlightChannelGroup } from "$lib/bindings/HighlightChannelGroup";
 import { API_BASE } from "$lib/config";
 
-export type { Channel };
+export type {
+  Channel,
+  CreateHighlightRequest,
+  Highlight,
+  HighlightChannelGroup,
+};
 
 /** One summarized video as returned by `GET /api/mini`. */
 export interface MiniSummaryItem {
@@ -21,6 +29,16 @@ export interface MiniReaderPayload {
   channels: Channel[];
   selected_channel_id: string | null;
   summaries: MiniSummaryItem[];
+}
+
+/** A story the reader finished, from `GET /api/mini/finished`. */
+export interface FinishedSummaryItem extends MiniSummaryItem {
+  finished_at: string;
+}
+
+export interface FinishedPage {
+  stories: FinishedSummaryItem[];
+  has_more: boolean;
 }
 
 export class ApiError extends Error {
@@ -100,6 +118,47 @@ export function setStoryRead(videoId: string, read: boolean) {
     `/api/mini/videos/${encodeURIComponent(videoId)}/read`,
     { method: "PUT", body: JSON.stringify({ read }) },
   );
+}
+
+/** Any story from a followed channel, read or unread. */
+export function fetchStory(videoId: string) {
+  return request<MiniSummaryItem>(
+    `/api/mini/videos/${encodeURIComponent(videoId)}`,
+  );
+}
+
+/** Finished stories, most recently finished first. */
+export function fetchFinishedStories(offset: number, limit: number) {
+  return request<FinishedPage>(
+    `/api/mini/finished?offset=${offset}&limit=${limit}`,
+  );
+}
+
+export function listStoryHighlights(videoId: string) {
+  return request<Highlight[]>(
+    `/api/videos/${encodeURIComponent(videoId)}/highlights`,
+  );
+}
+
+export function createHighlight(
+  videoId: string,
+  draft: CreateHighlightRequest,
+) {
+  return request<Highlight>(
+    `/api/videos/${encodeURIComponent(videoId)}/highlights`,
+    { method: "POST", body: JSON.stringify(draft) },
+  );
+}
+
+/** Every highlight, grouped by channel and then by video. */
+export function listHighlights() {
+  return request<HighlightChannelGroup[]>("/api/highlights");
+}
+
+export function deleteHighlight(highlightId: string) {
+  return request<void>(`/api/highlights/${encodeURIComponent(highlightId)}`, {
+    method: "DELETE",
+  });
 }
 
 export function listChannels() {

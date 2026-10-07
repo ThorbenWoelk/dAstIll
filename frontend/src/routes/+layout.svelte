@@ -27,7 +27,7 @@
   {#if session.status === "signed-in"}
     {@render children()}
   {:else}
-    <Masthead />
+    <Masthead signedIn={false} />
     {#if session.status === "signed-out"}
       <SignIn
         busy={session.busy}

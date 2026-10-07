@@ -13,7 +13,9 @@ use serde::Deserialize;
 
 use crate::config::SecurityRuntimeConfig;
 
-pub(crate) fn extract_bearer_token(authorization: Option<&HeaderValue>) -> Result<Option<&str>, String> {
+pub(crate) fn extract_bearer_token(
+    authorization: Option<&HeaderValue>,
+) -> Result<Option<&str>, String> {
     let Some(header_value) = authorization else {
         return Ok(None);
     };

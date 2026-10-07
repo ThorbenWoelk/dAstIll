@@ -175,7 +175,10 @@ test("a reader without channels is sent to add one", async ({ page }) => {
 
 test("sections page adds and removes channels", async ({ page }) => {
   await openPaper(page, { channels: CHANNELS, stories: STORIES });
-  await page.getByRole("link", { name: "Sections", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Pages" })
+    .getByRole("link", { name: "Sections" })
+    .click();
 
   await page.getByLabel("Add a channel").fill("@newchannel");
   await page.getByRole("button", { name: "Add", exact: true }).click();

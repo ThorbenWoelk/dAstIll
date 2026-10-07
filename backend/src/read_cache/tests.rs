@@ -490,3 +490,43 @@ async fn workspace_bootstrap_cache_keeps_entries_separate_by_video_filter() {
         Some("queued-only".to_string())
     );
 }
+
+#[tokio::test]
+async fn user_video_states_follow_writes_once_cached() {
+    use crate::models::UserVideoState;
+    use std::collections::HashMap;
+
+    let cache = ReadCache::default();
+    let state = |video_id: &str, acknowledged: bool| UserVideoState {
+        video_id: video_id.to_string(),
+        acknowledged,
+        updated_at: chrono::Utc::now(),
+    };
+
+    // Not cached yet: a write does not create a partial map.
+    cache
+        .record_user_video_state("user-1", &state("v1", true))
+        .await;
+    assert!(cache.get_user_video_states("user-1").await.is_none());
+
+    cache
+        .set_user_video_states(
+            "user-1".to_string(),
+            HashMap::from([("v1".to_string(), state("v1", false))]),
+        )
+        .await;
+    cache
+        .record_user_video_state("user-1", &state("v1", true))
+        .await;
+    cache
+        .record_user_video_state("user-1", &state("v2", true))
+        .await;
+
+    let cached = cache
+        .get_user_video_states("user-1")
+        .await
+        .expect("states cached");
+    assert!(cached["v1"].acknowledged);
+    assert!(cached["v2"].acknowledged);
+    assert!(cache.get_user_video_states("user-2").await.is_none());
+}

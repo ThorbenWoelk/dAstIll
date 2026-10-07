@@ -248,17 +248,17 @@ The numbers below are estimates from GCP list prices and the app's request patte
 measured bills. Turn on [billing budgets](#billing-budgets) to get an alert if real spend
 drifts.
 
-| Resource                | What keeps it cheap                                                                                                     | Expected cost       |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| Cloud Run backend       | Scales to zero, one instance max, CPU only while a request runs. The reader makes no background or streaming requests. | Inside free tier    |
-| Scheduled catch-up      | Cloud Scheduler wakes the backend every 4 hours for at most 10 minutes: at most about 60k CPU-seconds a month.           | Inside free tier    |
-| Cloud Run ASR           | Scales to zero. Runs only when a podcast episode has no transcript.                                                     | Inside free tier    |
-| Firebase Hosting        | Static files, about 1 MB per first visit, then cached by the browser and service worker.                               | Inside free tier    |
-| Firebase Auth           | Google sign-in only.                                                                                                    | Free                |
-| Cloud Storage           | Small JSON objects plus one current search snapshot. The backend deletes older snapshots after each publish.            | Well under 1 EUR    |
-| Artifact Registry       | Keeps two images per service (current and one rollback).                                                                | Under 0.50 EUR      |
-| Secret Manager          | Eight secrets. The first six active versions are free.                                                                  | About 0.15 EUR      |
-| Cloud Logging           | Request logs at `info` level stay far below the free 50 GiB.                                                           | Free                |
+| Resource           | What keeps it cheap                                                                                                    | Expected cost    |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Cloud Run backend  | Scales to zero, one instance max, CPU only while a request runs. The reader makes no background or streaming requests. | Inside free tier |
+| Scheduled catch-up | Cloud Scheduler wakes the backend every 4 hours for at most 10 minutes: at most about 60k CPU-seconds a month.         | Inside free tier |
+| Cloud Run ASR      | Scales to zero. Runs only when a podcast episode has no transcript.                                                    | Inside free tier |
+| Firebase Hosting   | Static files, about 1 MB per first visit, then cached by the browser and service worker.                               | Inside free tier |
+| Firebase Auth      | Google sign-in only.                                                                                                   | Free             |
+| Cloud Storage      | Small JSON objects plus one current search snapshot. The backend deletes older snapshots after each publish.           | Well under 1 EUR |
+| Artifact Registry  | Keeps two images per service (current and one rollback).                                                               | Under 0.50 EUR   |
+| Secret Manager     | Eight secrets. The first six active versions are free.                                                                 | About 0.15 EUR   |
+| Cloud Logging      | Request logs at `info` level stay far below the free 50 GiB.                                                           | Free             |
 
 How the reader keeps requests low:
 

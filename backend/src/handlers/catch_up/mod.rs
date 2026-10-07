@@ -71,10 +71,7 @@ pub async fn run_catch_up(
         return Err((StatusCode::UNAUTHORIZED, "Unauthorized".to_string()));
     }
     let Some(_running) = RunningGuard::acquire() else {
-        return Err((
-            StatusCode::CONFLICT,
-            "Catch-up already running".to_string(),
-        ));
+        return Err((StatusCode::CONFLICT, "Catch-up already running".to_string()));
     };
 
     let started = Instant::now();

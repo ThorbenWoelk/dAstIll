@@ -209,19 +209,34 @@ pub async fn put_user_video_state(
 ) -> Result<(), StoreError> {
     store
         .put_json(&user_video_state_key(user_id, &state.video_id), state)
-        .await
+        .await?;
+    store
+        .read_cache
+        .record_user_video_state(user_id, state)
+        .await;
+    Ok(())
 }
 
 pub async fn list_user_video_states(
     store: &Store,
     user_id: &str,
 ) -> Result<HashMap<String, UserVideoState>, StoreError> {
-    Ok(store
+    // One object per video: reading them all is expensive, so keep them in
+    // memory. The backend runs as a single instance (runtime-limits.md).
+    if let Some(states) = store.read_cache.get_user_video_states(user_id).await {
+        return Ok(states);
+    }
+    let states: HashMap<String, UserVideoState> = store
         .load_all::<UserVideoState>(&user_video_state_prefix(user_id))
         .await?
         .into_iter()
         .map(|state| (state.video_id.clone(), state))
-        .collect())
+        .collect();
+    store
+        .read_cache
+        .set_user_video_states(user_id.to_string(), states.clone())
+        .await;
+    Ok(states)
 }
 
 pub fn build_channel_from_records(

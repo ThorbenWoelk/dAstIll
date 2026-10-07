@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Masthead from "$lib/components/Masthead.svelte";
+  import { forgetEdition } from "$lib/edition/keepsake";
+  import { session } from "$lib/session.svelte";
   import {
     listChannels,
     subscribeToChannel,
@@ -75,6 +77,11 @@
     }
   }
 
+  async function signOut() {
+    if (session.reader) forgetEdition(session.reader.uid);
+    await session.signOut();
+  }
+
   onMount(() => {
     void loadChannels();
   });
@@ -84,11 +91,7 @@
   <title>Sections · dAstIll</title>
 </svelte:head>
 
-<Masthead>
-  {#snippet actions()}
-    <a class="text-button" href="/">Back to the paper</a>
-  {/snippet}
-</Masthead>
+<Masthead current="sections" />
 
 <section class="sections-page" aria-labelledby="sections-heading">
   <h1 id="sections-heading">Sections</h1>
@@ -176,6 +179,17 @@
       {/each}
     </ul>
   {/if}
+
+  <div class="account">
+    <span>
+      {session.reader?.email
+        ? `Signed in as ${session.reader.email}`
+        : "Signed in"}
+    </span>
+    <button type="button" class="text-button" onclick={signOut}>
+      Sign out
+    </button>
+  </div>
 </section>
 
 <style>
@@ -290,5 +304,16 @@
 
   .danger {
     color: var(--danger);
+  }
+
+  .account {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--space-3);
+    margin-top: var(--space-7);
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--ink-soft);
   }
 </style>

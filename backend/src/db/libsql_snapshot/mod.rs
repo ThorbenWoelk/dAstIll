@@ -435,7 +435,10 @@ async fn prune_superseded_snapshots(
         .await
         .map_err(|err| StoreError::ObjectStore(err.to_string()))?;
     let mut deleted = 0usize;
-    for key in keys.iter().filter(|key| key.as_str() != current_snapshot_key) {
+    for key in keys
+        .iter()
+        .filter(|key| key.as_str() != current_snapshot_key)
+    {
         objects
             .delete_key(key)
             .await
