@@ -32,7 +32,7 @@ mkdir -p "$target_dir"
 cat > "$manifest_path" <<'JSON'
 {
   "default": "frontend/static/icon-512.png",
-  "bg_color": "#faf9f6"
+  "bg_color": "#f1ece1"
 }
 JSON
 
