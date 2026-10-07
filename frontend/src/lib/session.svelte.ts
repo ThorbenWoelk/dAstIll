@@ -1,4 +1,4 @@
-import { useTokenSource } from "$lib/api";
+import { useReaderIdentity, useTokenSource } from "$lib/api";
 import {
   FIREBASE_AUTH_EMULATOR_HOST,
   IS_LOCAL,
@@ -57,6 +57,7 @@ class Session {
   async start() {
     if (this.#started || typeof window === "undefined") return;
     this.#started = true;
+    useReaderIdentity(() => this.reader?.uid ?? null);
 
     const local = readLocalSession();
     if (local) {

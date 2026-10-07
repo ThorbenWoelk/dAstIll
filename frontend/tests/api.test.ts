@@ -4,6 +4,7 @@ import {
   ApiError,
   fetchChannelSummaries,
   setStoryRead,
+  useReaderIdentity,
   useTokenSource,
 } from "../src/lib/api";
 
@@ -12,6 +13,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
   useTokenSource(async () => null);
+  useReaderIdentity(() => null);
 });
 
 function stubFetch(response: Response) {
@@ -60,6 +62,21 @@ describe("api", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect(error.message).toBe("Channel not found");
     expect(error.status).toBe(404);
+  });
+
+  it("does not send a request after the reader changes", async () => {
+    let readerId: string | null = "user-a";
+    useReaderIdentity(() => readerId);
+    useTokenSource(async () => {
+      readerId = "user-b";
+      return "token-a";
+    });
+    const calls = stubFetch(Response.json({ video_id: "v1", read: true }));
+
+    await expect(setStoryRead("v1", true)).rejects.toThrow(
+      "Please sign in again.",
+    );
+    expect(calls).toHaveLength(0);
   });
 
   it("reports network failures as connection problems", async () => {

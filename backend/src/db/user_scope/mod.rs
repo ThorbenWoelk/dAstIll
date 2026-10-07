@@ -223,6 +223,8 @@ pub async fn list_user_video_states(
 ) -> Result<HashMap<String, UserVideoState>, StoreError> {
     // One object per video: reading them all is expensive, so keep them in
     // memory. The backend runs as a single instance (runtime-limits.md).
+    // Publishing merges a mark-read that lands while this load is in flight;
+    // replacing the map outright would hide that write until the cache expires.
     if let Some(states) = store.read_cache.get_user_video_states(user_id).await {
         return Ok(states);
     }
@@ -232,11 +234,10 @@ pub async fn list_user_video_states(
         .into_iter()
         .map(|state| (state.video_id.clone(), state))
         .collect();
-    store
+    Ok(store
         .read_cache
-        .set_user_video_states(user_id.to_string(), states.clone())
-        .await;
-    Ok(states)
+        .publish_user_video_states(user_id.to_string(), states)
+        .await)
 }
 
 pub fn build_channel_from_records(
