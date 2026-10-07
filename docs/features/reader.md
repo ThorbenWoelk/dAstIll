@@ -27,7 +27,7 @@ On a phone the Mark as read bar stays at the bottom of the screen while you read
 Select any passage in a story and press **Highlight**. The passage is marked in yellow and stays
 marked when you come back to the story. Tap or click a highlight to remove it.
 
-**Highlights** in the top right lists every passage you marked, grouped by channel and story. Type
+**Highlights** in the top right lists every passage you marked, by story, newest stories first. Type
 in the search box to find a passage by its words, the story title, or the channel name. Select a
 story title to open the full story.
 

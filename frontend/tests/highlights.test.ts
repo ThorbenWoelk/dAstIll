@@ -7,7 +7,8 @@ import {
 } from "../src/lib/highlights/anchoring";
 import {
   countHighlights,
-  filterHighlightGroups,
+  filterHighlightedStories,
+  listHighlightedStories,
   withoutHighlight,
 } from "../src/lib/highlights/collection";
 
@@ -92,7 +93,7 @@ describe("placeHighlights", () => {
 
 function group(
   channel: string,
-  videos: { id: string; title: string; texts: string[] }[],
+  videos: { id: string; title: string; day: string; texts: string[] }[],
 ): HighlightChannelGroup {
   return {
     source_id: channel,
@@ -109,7 +110,7 @@ function group(
       item_kind: "video",
       title: video.title,
       thumbnail_url: null,
-      published_at: "2026-10-01T08:00:00Z",
+      published_at: `2026-10-${video.day}T08:00:00Z`,
       highlights: video.texts.map((text, index) =>
         highlight(`${video.id}-${index}`, text),
       ),
@@ -118,38 +119,49 @@ function group(
 }
 
 describe("highlight collection", () => {
-  const groups = [
+  const stories = listHighlightedStories([
     group("a", [
       {
         id: "v1",
         title: "On sleep",
+        day: "01",
         texts: ["Adenosine builds up", "Naps help"],
       },
-      { id: "v2", title: "On work", texts: ["Small teams ship"] },
+      { id: "v2", title: "On work", day: "06", texts: ["Small teams ship"] },
     ]),
     group("b", [
-      { id: "v3", title: "Databases", texts: ["Postgres was enough"] },
+      {
+        id: "v3",
+        title: "Databases",
+        day: "03",
+        texts: ["Postgres was enough"],
+      },
     ]),
-  ];
+  ]);
 
-  it("counts every highlight", () => {
-    expect(countHighlights(groups)).toBe(4);
+  it("lists stories newest first, across channels", () => {
+    expect(stories.map((s) => s.videoId)).toEqual(["v2", "v3", "v1"]);
+    expect(stories[1].channelName).toBe("Channel b");
   });
 
-  it("filters by highlight text, title, and channel, dropping empty groups", () => {
-    const bySleep = filterHighlightGroups(groups, "sleep");
-    expect(countHighlights(bySleep)).toBe(2);
-    expect(bySleep.map((g) => g.channel_id)).toEqual(["a"]);
+  it("counts every highlight", () => {
+    expect(countHighlights(stories)).toBe(4);
+  });
 
-    const byWords = filterHighlightGroups(groups, "channel b postgres");
+  it("filters by highlight text, title, and channel, dropping empty stories", () => {
+    const bySleep = filterHighlightedStories(stories, "sleep");
+    expect(countHighlights(bySleep)).toBe(2);
+    expect(bySleep.map((s) => s.videoId)).toEqual(["v1"]);
+
+    const byWords = filterHighlightedStories(stories, "channel b postgres");
     expect(countHighlights(byWords)).toBe(1);
 
-    expect(filterHighlightGroups(groups, "  ")).toBe(groups);
+    expect(filterHighlightedStories(stories, "  ")).toBe(stories);
   });
 
   it("removes one highlight and any story left empty", () => {
-    const left = withoutHighlight(groups, "v3-0");
-    expect(left.map((g) => g.channel_id)).toEqual(["a"]);
+    const left = withoutHighlight(stories, "v3-0");
+    expect(left.map((s) => s.videoId)).toEqual(["v2", "v1"]);
     expect(countHighlights(left)).toBe(3);
   });
 });

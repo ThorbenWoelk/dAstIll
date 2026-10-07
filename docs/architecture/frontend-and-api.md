@@ -100,14 +100,14 @@ The frontend is a static SvelteKit single-page app. It renders entirely in the b
 
 ## Routing
 
-| Route           | Purpose                                                    |
-| --------------- | ---------------------------------------------------------- |
-| `/`             | The reader: front page or one section                      |
-| `/highlights`   | Every highlight, grouped by channel and story, with search |
-| `/finished`     | Stories marked as read, most recently finished first       |
-| `/stories/{id}` | One story, read or unread, with its highlights             |
-| `/sections`     | Follow a new channel or stop following one; sign out       |
-| `/mini`         | Old reader URL. Firebase Hosting redirects it to `/`.      |
+| Route           | Purpose                                                     |
+| --------------- | ----------------------------------------------------------- |
+| `/`             | The reader: front page or one section                       |
+| `/highlights`   | Every highlight by story, newest stories first, with search |
+| `/finished`     | Stories marked as read, most recently finished first        |
+| `/stories/{id}` | One story, read or unread, with its highlights              |
+| `/sections`     | Follow a new channel or stop following one; sign out        |
+| `/mini`         | Old reader URL. Firebase Hosting redirects it to `/`.       |
 
 Signed-out visitors see the sign-in page on every route.
 
