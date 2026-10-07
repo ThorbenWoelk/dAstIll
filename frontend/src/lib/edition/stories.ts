@@ -153,11 +153,12 @@ export function storyAfterFinishing(
 
 const WORDS_PER_MINUTE = 220;
 
+/** Hyphenated words count once; list dashes and markup do not count. */
 export function readingMinutes(markdown: string): number {
   const words = markdown
-    .replace(/[#*_`>[\]()-]/g, " ")
+    .replace(/[#*_`>[\]()]/g, " ")
     .split(/\s+/)
-    .filter(Boolean).length;
+    .filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
   return Math.max(1, Math.round(words / WORDS_PER_MINUTE));
 }
 

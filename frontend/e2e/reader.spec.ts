@@ -144,7 +144,7 @@ test("summary HTML from the model is sanitized", async ({ page }) => {
         channelId: "science",
         title: "Untrusted summary",
         publishedAt: "2026-10-06T07:00:00Z",
-        summary: `${summaryFor("x")}\n<script>window.__pwned = true</script>\n<img src=x onerror="window.__pwned = true">\n<a href="https://example.com" onclick="window.__pwned = true">a link</a>`,
+        summary: `${summaryFor("x")}\n<script>window.__pwned = true</script>\n<img src=x onerror="window.__pwned = true">\n<a href="https://example.com" onclick="window.__pwned = true">raw link</a>\n\n[a link](https://example.com) and [bad link](javascript:window.__pwned=true)\n\n![pic](https://example.com/x.png)`,
       },
     ],
   });
@@ -153,13 +153,68 @@ test("summary HTML from the model is sanitized", async ({ page }) => {
   await expect(article.locator("script")).toHaveCount(0);
   await expect(article.locator("img")).toHaveCount(0);
   await expect(article.locator("[onclick]")).toHaveCount(0);
+  // Raw HTML in the markdown shows as text instead of becoming elements.
+  await expect(
+    article.getByText("<script>window.__pwned = true"),
+  ).toBeVisible();
+  await expect(article.getByRole("link", { name: "raw link" })).toHaveCount(0);
   await expect(article.getByRole("link", { name: "a link" })).toHaveAttribute(
     "target",
     "_blank",
   );
+  await expect(article.getByRole("link", { name: "a link" })).toHaveAttribute(
+    "rel",
+    "noopener noreferrer",
+  );
+  await expect(article.locator('a[href^="javascript:"]')).toHaveCount(0);
   expect(
     await page.evaluate(() => (window as { __pwned?: boolean }).__pwned),
   ).toBeUndefined();
+});
+
+test("a TL;DR summary with tags and timestamps in prose reads like the standard one", async ({
+  page,
+}) => {
+  await openPaper(page, {
+    channels: CHANNELS,
+    stories: [
+      {
+        id: "v-tldr",
+        channelId: "build",
+        title: "Components in prose",
+        publishedAt: "2026-10-06T07:00:00Z",
+        summary: [
+          "Let me analyze this transcript first.",
+          "",
+          "## TL;DR",
+          "- Wrap the page in <PricingTable /> once.",
+          "",
+          "## Overview",
+          "In this video, Dr. Rivera builds a pricing page.",
+          "",
+          "## Key Points",
+          "[0:00]: Intro",
+          "",
+          "[12:34] The <command_name> placeholder is explained.",
+        ].join("\n"),
+      },
+    ],
+  });
+  const article = page.locator("article");
+  await expect(headline(page)).toHaveText("Components in prose");
+  await expect(
+    article.getByText("In this video, Dr. Rivera builds a pricing page."),
+  ).toBeVisible();
+  const glance = article.getByRole("complementary", { name: "At a glance" });
+  await expect(glance).toContainText("Wrap the page in <PricingTable /> once.");
+  const body = article.locator(".body");
+  await expect(body).not.toContainText("TL;DR");
+  await expect(body).not.toContainText("Let me analyze");
+  await expect(body).toContainText("[0:00]: Intro");
+  await expect(body).toContainText(
+    "[12:34] The <command_name> placeholder is explained.",
+  );
+  await expect(body.getByRole("link")).toHaveCount(0);
 });
 
 test("a reader without channels is sent to add one", async ({ page }) => {

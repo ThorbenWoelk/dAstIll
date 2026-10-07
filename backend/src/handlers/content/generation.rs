@@ -82,6 +82,48 @@ fn completed_live_transcript_looks_like_description(
     token_overlap_ratio(&transcript_tokens, &description_tokens) >= DESCRIPTION_LIKE_OVERLAP_RATIO
 }
 
+/// True when the "transcript" is really the video description (links, chapter list,
+/// credits). This happens when a video has no captions and the transcript tool falls back
+/// to the page text. Real captions from yt-dlp carry timed segments and are never flagged.
+fn transcript_is_only_video_description(
+    transcript_text: &str,
+    description: &str,
+    timed_segment_count: usize,
+) -> bool {
+    if timed_segment_count > 0 {
+        return false;
+    }
+    let description_tokens = normalized_word_tokens(description);
+    if description_tokens.len() < DESCRIPTION_ONLY_MIN_WORDS {
+        return false;
+    }
+    let transcript_tokens = normalized_word_tokens(transcript_text);
+    if transcript_tokens.is_empty() {
+        return false;
+    }
+    // Most transcript words must come from the description. A real transcript that is
+    // much longer than the description cannot reach this ratio.
+    token_overlap_ratio(&transcript_tokens, &description_tokens) >= DESCRIPTION_ONLY_OVERLAP_RATIO
+}
+
+async fn stored_video_description(state: &AppState, video_id: &str) -> Option<String> {
+    match db::get_video_info(&state.db, video_id).await {
+        Ok(info) => info.and_then(|info| info.description),
+        Err(err) => {
+            tracing::warn!(
+                video_id = %video_id,
+                error = %err,
+                "failed to load video description for transcript check"
+            );
+            None
+        }
+    }
+}
+
+fn timed_segment_count(transcript: &Transcript) -> usize {
+    transcript.timed_text.as_ref().map_or(0, Vec::len)
+}
+
 async fn defer_transcript_processing(
     state: &AppState,
     video_id: &str,
@@ -110,12 +152,29 @@ async fn valid_cached_transcript(
         .await
         .map_err(map_db_err)?
     {
-        if is_valid_cached_transcript(&transcript) {
+        if !is_valid_cached_transcript(&transcript) {
+            tracing::warn!(
+                video_id = %video_id,
+                "cached transcript is invalid (site-wide blurb or empty) - discarding and re-fetching"
+            );
+            return Ok(None);
+        }
+        let description = stored_video_description(state, video_id).await;
+        let is_description = description.as_deref().is_some_and(|description| {
+            transcript_text(&transcript).is_some_and(|text| {
+                transcript_is_only_video_description(
+                    text,
+                    description,
+                    timed_segment_count(&transcript),
+                )
+            })
+        });
+        if !is_description {
             return Ok(Some(transcript));
         }
         tracing::warn!(
             video_id = %video_id,
-            "cached transcript is invalid (site-wide blurb or empty) - discarding and re-fetching"
+            "cached transcript is only the video description - discarding and re-fetching"
         );
     }
     Ok(None)
@@ -143,7 +202,7 @@ fn transcript_text(transcript: &Transcript) -> Option<&str> {
     .find(|content| !content.trim().is_empty())
 }
 
-async fn sync_search_source(
+pub(super) async fn sync_search_source(
     state: &AppState,
     video_id: &str,
     source_kind: SearchSourceKind,
@@ -263,6 +322,24 @@ pub async fn update_summary(
     Ok(Json(summary))
 }
 
+/// Maps a transcript error to the HTTP status and the transcript status to persist.
+///
+/// Temporary outcomes (rate limits, ASR outages) keep the video pending and return
+/// 429/503, which the queue does not count against `retry_count`.
+fn transcript_error_statuses(
+    err: &crate::services::transcript::TranscriptError,
+) -> (StatusCode, ContentStatus) {
+    use crate::services::transcript::TranscriptError;
+    match err {
+        TranscriptError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, ContentStatus::Pending),
+        TranscriptError::AsrUnavailable | TranscriptError::AsrTemporarilyUnavailable(_) => {
+            (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)
+        }
+        TranscriptError::NoTranscript => (StatusCode::NOT_FOUND, ContentStatus::Failed),
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, ContentStatus::Failed),
+    }
+}
+
 /// Persist transcript status after extraction failure **before** returning to callers
 /// (e.g. the queue worker) that increment `retry_count`. A previous `tokio::spawn` here
 /// raced object-store writes and left rows stuck in `loading` with `retry_count >= MAX`, which
@@ -303,26 +380,7 @@ async fn apply_transcript_error(
         }
     }
 
-    let status = match err {
-        crate::services::transcript::TranscriptError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
-        crate::services::transcript::TranscriptError::NoTranscript => StatusCode::NOT_FOUND,
-        crate::services::transcript::TranscriptError::AsrUnavailable => {
-            StatusCode::SERVICE_UNAVAILABLE
-        }
-        crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
-            StatusCode::SERVICE_UNAVAILABLE
-        }
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    };
-
-    let next_status = match err {
-        crate::services::transcript::TranscriptError::RateLimited
-        | crate::services::transcript::TranscriptError::AsrUnavailable
-        | crate::services::transcript::TranscriptError::AsrTemporarilyUnavailable(_) => {
-            ContentStatus::Pending
-        }
-        _ => ContentStatus::Failed,
-    };
+    let (status, next_status) = transcript_error_statuses(&err);
 
     if let Err(e) = db::update_video_transcript_status(&state.db, video_id, next_status).await {
         tracing::error!(
@@ -519,6 +577,34 @@ pub(crate) async fn ensure_transcript(
         }
     }
 
+    let description = match completed_live
+        .as_ref()
+        .and_then(|metadata| metadata.description.clone())
+    {
+        Some(description) => Some(description),
+        None => stored_video_description(state, video_id).await,
+    };
+    let candidate_text = if raw.trim().is_empty() {
+        &formatted
+    } else {
+        &raw
+    };
+    if description.as_deref().is_some_and(|description| {
+        transcript_is_only_video_description(candidate_text, description, timed.len())
+    }) {
+        tracing::warn!(
+            video_id = %video_id,
+            transcript_words = candidate_text.split_whitespace().count(),
+            "transcript is only the video description; marking the video as having no transcript"
+        );
+        return Err(apply_transcript_error(
+            state,
+            video_id,
+            crate::services::transcript::TranscriptError::NoTranscript,
+        )
+        .await);
+    }
+
     let transcript = Transcript {
         video_id: video_id.to_string(),
         raw_text: Some(raw),
@@ -571,18 +657,33 @@ fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus)
     }
 }
 
+/// How `ensure_summary_internal` treats a summary that is already stored.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StoredSummaryUse {
+    /// Return it (user read path).
+    Return,
+    /// Return it unless it is queued for automatic regeneration (queue path).
+    ReturnUnlessAutoRegenerating,
+    /// Ignore it and generate a new one; it is overwritten only on success.
+    Replace,
+}
+
 async fn ensure_summary_internal(
     state: &AppState,
     video_id: &str,
-    allow_cached_auto_regen: bool,
+    stored_summary_use: StoredSummaryUse,
 ) -> Result<Summary, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     {
-        if let Some(summary) = db::get_summary(&state.db, video_id)
-            .await
-            .map_err(map_db_err)?
-        {
-            if allow_cached_auto_regen {
+        let stored_summary = if stored_summary_use == StoredSummaryUse::Replace {
+            None
+        } else {
+            db::get_summary(&state.db, video_id)
+                .await
+                .map_err(map_db_err)?
+        };
+        if let Some(summary) = stored_summary {
+            if stored_summary_use == StoredSummaryUse::ReturnUnlessAutoRegenerating {
                 let auto_regen_attempts = db::get_summary_auto_regen_attempts(&state.db, video_id)
                     .await
                     .map_err(map_db_err)?;
@@ -688,6 +789,14 @@ async fn ensure_summary_internal(
             return Err((http_status, message));
         }
     };
+    // The summarizer already rejects empty output; never store an empty summary as ready.
+    if content.trim().is_empty() {
+        set_summary_status_and_evict(state, video_id, ContentStatus::Failed).await?;
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Summary output was empty".to_string(),
+        ));
+    }
     tracing::info!(video_id = %video_id, "summary generation completed");
 
     let summary = Summary {
@@ -725,14 +834,28 @@ pub(crate) async fn ensure_summary(
     state: &AppState,
     video_id: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    ensure_summary_internal(state, video_id, false).await
+    ensure_summary_internal(state, video_id, StoredSummaryUse::Return).await
 }
 
 pub(crate) async fn ensure_summary_for_queue(
     state: &AppState,
     video_id: &str,
 ) -> Result<Summary, (StatusCode, String)> {
-    ensure_summary_internal(state, video_id, true).await
+    ensure_summary_internal(
+        state,
+        video_id,
+        StoredSummaryUse::ReturnUnlessAutoRegenerating,
+    )
+    .await
+}
+
+/// Generates a new summary and overwrites the stored one only on success.
+/// On failure the stored summary stays untouched.
+pub(super) async fn regenerate_summary_replacing_existing(
+    state: &AppState,
+    video_id: &str,
+) -> Result<Summary, (StatusCode, String)> {
+    ensure_summary_internal(state, video_id, StoredSummaryUse::Replace).await
 }
 
 const COMPLETED_LIVE_TRANSCRIPT_GRACE_SECONDS: i64 = 30 * 60;
@@ -740,6 +863,8 @@ const LONG_LIVE_MIN_DURATION_SECONDS: u64 = 30 * 60;
 const DESCRIPTION_LIKE_MAX_TRANSCRIPT_WORDS: usize = 1_000;
 const DESCRIPTION_LIKE_MIN_WORDS: usize = 40;
 const DESCRIPTION_LIKE_OVERLAP_RATIO: f64 = 0.75;
+const DESCRIPTION_ONLY_MIN_WORDS: usize = 20;
+const DESCRIPTION_ONLY_OVERLAP_RATIO: f64 = 0.8;
 
 #[cfg(test)]
 #[path = "generation_tests.rs"]

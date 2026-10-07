@@ -10,7 +10,7 @@ dAstIll uses independently configured model roles through the configured Ollama 
 | Summarizer        | Primary summary generation and transcript cleaning                              | [Summarization](/features/summarization) |
 | Fallback          | Optional local fallback when the primary summarizer is cloud-backed and limited | [Summarization](/features/summarization) |
 | Chat              | RAG conversations over indexed library content                                  | [Chat](/features/chat)                   |
-| Summary evaluator | Summary quality evaluation                                                      | [Summarization](/features/summarization) |
+| Summary evaluator | Summary quality evaluation and automatic regeneration decisions                 | [Summarization](/features/summarization) |
 | Embedding         | Dense embeddings for semantic search                                            | [Search](/features/search)               |
 | Reranker          | Optional cross-encoder reranking for hybrid search                              | [Search](/features/search)               |
 | HyDE              | Optional short-query passage synthesis                                          | [Search](/features/search)               |
@@ -51,6 +51,7 @@ dAstIll keeps unaffected features available when model or retrieval dependencies
 | Summarizer unavailable                | generation queue pauses; search and chat continue  | [Summarization](/features/summarization) |
 | Embedding model unavailable           | FTS-only search; chunking and GCS writes continue  | [Search](/features/search)               |
 | Evaluator unavailable or rate-limited | evaluation pauses; generation and search continue  | [Summarization](/features/summarization) |
+| Evaluator answer unusable             | retried; after 3 failures marked unscorable        | [Summarization](/features/summarization) |
 | Reranker call fails                   | plain RRF ordering                                 | [Search](/features/search)               |
 | HyDE generation fails                 | raw query embedding                                | [Search](/features/search)               |
 | Cloud rate limit                      | local fallback when configured, then cooldown wait | [Summarization](/features/summarization) |

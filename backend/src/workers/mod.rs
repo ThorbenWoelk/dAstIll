@@ -501,6 +501,8 @@ const SUMMARY_EVAL_SCAN_LIMIT: usize = 4;
 const SUMMARY_EVAL_POLL_INTERVAL: Duration = Duration::from_secs(7);
 const SUMMARY_EVAL_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(30);
 const SUMMARY_EVAL_IDLE_POLL_MAX_INTERVAL: Duration = Duration::from_secs(120);
+/// Longest time between full scans of stored summaries for evaluation work.
+const SUMMARY_EVAL_FULL_SCAN_INTERVAL: Duration = Duration::from_secs(30 * 60);
 const SEARCH_BACKFILL_SCAN_LIMIT: usize = 64;
 const SEARCH_INDEX_SCAN_LIMIT: usize = 8;
 const SEARCH_RECONCILE_SCAN_LIMIT: usize = 64;

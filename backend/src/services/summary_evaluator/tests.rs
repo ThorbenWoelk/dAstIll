@@ -1,12 +1,12 @@
 use super::{
-    EvaluatorResponse, SummaryEvaluationResult, SummaryEvaluatorError, SummaryEvaluatorService,
-    evaluation_preamble, evaluation_prompt, evaluation_result_from_response,
-    evaluator_response_schema,
+    EvaluatorResponse, SummaryEvaluation, SummaryEvaluatorError, SummaryEvaluatorService,
+    UnscorableCause, evaluation_preamble, evaluation_prompt, evaluation_result_from_response,
+    evaluator_response_schema, transcript_for_evaluation,
 };
-use crate::models::AiStatus;
+use crate::models::{AiStatus, SummaryEvaluationResult, VocabularyReplacement};
 use crate::services::ollama::OllamaCore;
 
-fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
+fn parse_evaluation(raw: &str) -> Result<SummaryEvaluation, SummaryEvaluatorError> {
     let start = raw
         .find('{')
         .ok_or_else(|| SummaryEvaluatorError::ParseFailed("missing json object".to_string()))?;
@@ -19,6 +19,10 @@ fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, Summa
         .map_err(|err| SummaryEvaluatorError::ParseFailed(err.to_string()))?;
 
     evaluation_result_from_response(parsed)
+}
+
+fn parse_evaluation_response(raw: &str) -> Result<SummaryEvaluationResult, SummaryEvaluatorError> {
+    parse_evaluation(raw).map(|evaluation| evaluation.result)
 }
 
 #[tokio::test]
@@ -180,8 +184,9 @@ fn parse_evaluation_response_handles_structured_scored_schema() {
 }
 
 #[test]
-fn parse_evaluation_response_requires_defects_for_non_perfect_structured_scores() {
-    let err = parse_evaluation_response(
+fn parse_evaluation_response_accepts_non_perfect_scores_without_defects() {
+    // Production shape: "defects are required for scores below 10" used to drop the whole result.
+    let parsed = parse_evaluation_response(
         r#"{
           "status": "scored",
           "faithfulness_score": 8,
@@ -191,14 +196,17 @@ fn parse_evaluation_response_requires_defects_for_non_perfect_structured_scores(
           "evaluation_note": "Some issues exist."
         }"#,
     )
-    .expect_err("non-perfect structured scores need evidence-backed defects");
+    .expect("a score without defect details is still usable");
 
-    assert!(err.to_string().contains("defects are required"));
+    assert_eq!(parsed.quality_score, Some(7));
+    let note = parsed.quality_note.expect("note");
+    assert!(note.contains("The evaluator listed no defects."));
+    assert!(note.contains("Some issues exist."));
 }
 
 #[test]
-fn parse_evaluation_response_rejects_empty_defect_evidence() {
-    let err = parse_evaluation_response(
+fn parse_evaluation_response_keeps_defect_with_blank_anchor() {
+    let parsed = parse_evaluation_response(
         r#"{
           "status": "scored",
           "faithfulness_score": 8,
@@ -215,9 +223,202 @@ fn parse_evaluation_response_rejects_empty_defect_evidence() {
           "evaluation_note": "The summary adds title context."
         }"#,
     )
-    .expect_err("defect evidence anchors must not be blank");
+    .expect("a defect with a claim but no anchor is still evidence");
 
-    assert!(err.to_string().contains("transcript_anchor is required"));
+    let note = parsed.quality_note.expect("note");
+    assert!(note.contains("- **Major hallucination**: Title-derived claim"));
+    assert!(!note.contains("transcript anchor:"));
+}
+
+#[test]
+fn parse_evaluation_response_defaults_missing_defect_severity_to_minor() {
+    // Production shape: "missing field `severity`" used to fail the whole decode.
+    let parsed = parse_evaluation_response(
+        r#"{
+          "status": "scored",
+          "unscorable_reason": null,
+          "faithfulness_score": 9,
+          "completeness_score": 8,
+          "final_score": 8,
+          "defects": [
+            {
+              "type": "omission",
+              "summary_claim": "Skips the pricing section.",
+              "transcript_anchor": "Let's talk about pricing."
+            }
+          ],
+          "evaluation_note": null,
+          "tags": ["Pricing"]
+        }"#,
+    )
+    .expect("missing severity should default");
+
+    assert_eq!(parsed.quality_score, Some(8));
+    let note = parsed.quality_note.expect("note");
+    assert!(note.contains(
+        "- **Minor omission**: Skips the pricing section.; transcript anchor: Let's talk about pricing."
+    ));
+}
+
+#[test]
+fn parse_evaluation_response_accepts_missing_axis_scores() {
+    // Production shape: "faithfulness_score is required" used to drop the whole result.
+    let parsed = parse_evaluation_response(
+        r#"{
+          "status": "scored",
+          "final_score": 9,
+          "defects": [
+            {
+              "type": "omission",
+              "severity": "minor",
+              "summary_claim": "Leaves out the closing example.",
+              "transcript_anchor": "One last example."
+            }
+          ],
+          "tags": []
+        }"#,
+    )
+    .expect("final score alone is usable");
+
+    assert_eq!(parsed.quality_score, Some(9));
+    let note = parsed.quality_note.expect("note");
+    assert!(!note.contains("Faithfulness"));
+    assert!(!note.contains("Completeness"));
+    assert!(note.contains("- Final: 9/10"));
+}
+
+#[test]
+fn parse_evaluation_response_uses_weaker_axis_when_final_score_missing() {
+    let parsed = parse_evaluation_response(
+        r#"{
+          "status": "scored",
+          "faithfulness_score": 9,
+          "completeness_score": 6,
+          "defects": [
+            { "type": "omission", "summary_claim": "Misses section two." }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    assert_eq!(parsed.quality_score, Some(6));
+}
+
+#[test]
+fn parse_evaluation_response_accepts_numeric_strings_and_whole_floats() {
+    let parsed = parse_evaluation_response(
+        r#"{ "status": "Scored", "faithfulness_score": "10", "completeness_score": 10.0, "final_score": 10 }"#,
+    )
+    .unwrap();
+
+    assert_eq!(parsed.quality_score, Some(10));
+}
+
+#[test]
+fn parse_evaluation_response_rejects_scored_output_without_any_score() {
+    let err = parse_evaluation_response(
+        r#"{ "status": "scored", "defects": [], "evaluation_note": "Looks fine." }"#,
+    )
+    .expect_err("a scored answer with no score is unusable");
+
+    assert!(err.to_string().contains("final_score is required"));
+}
+
+#[test]
+fn parse_evaluation_response_rejects_unknown_status() {
+    let err = parse_evaluation_response(r#"{ "status": "maybe", "final_score": 8 }"#)
+        .expect_err("unknown status is unusable");
+
+    assert!(err.to_string().contains("unsupported evaluation status"));
+}
+
+#[test]
+fn parse_evaluation_response_drops_defects_without_any_evidence() {
+    let parsed = parse_evaluation_response(
+        r#"{
+          "status": "scored",
+          "final_score": 8,
+          "defects": [ { "type": "omission", "severity": "minor" } ]
+        }"#,
+    )
+    .unwrap();
+
+    let note = parsed.quality_note.expect("note");
+    assert!(note.contains("The evaluator listed no defects."));
+}
+
+#[test]
+fn unscorable_cause_uses_explicit_field() {
+    let evaluation = parse_evaluation(
+        r#"{
+          "status": "unscorable",
+          "unscorable_reason": "Cannot compare.",
+          "unscorable_cause": "summary"
+        }"#,
+    )
+    .unwrap();
+
+    assert_eq!(evaluation.result.quality_score, None);
+    assert_eq!(evaluation.unscorable_cause, Some(UnscorableCause::Summary));
+}
+
+#[test]
+fn unscorable_cause_falls_back_to_reason_text() {
+    let summary_problem = parse_evaluation(
+        r#"{ "status": "unscorable", "unscorable_reason": "The summary is too malformed to compare." }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        summary_problem.unscorable_cause,
+        Some(UnscorableCause::Summary)
+    );
+
+    let transcript_problem = parse_evaluation(
+        r#"{ "status": "unscorable", "unscorable_reason": "Transcript is show notes, not spoken content." }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        transcript_problem.unscorable_cause,
+        Some(UnscorableCause::Transcript)
+    );
+
+    let no_reason = parse_evaluation(r#"{ "status": "unscorable" }"#).unwrap();
+    assert_eq!(
+        no_reason.unscorable_cause,
+        Some(UnscorableCause::Transcript)
+    );
+    assert_eq!(
+        no_reason.result.quality_note.as_deref(),
+        Some("**Unscorable**:\n- The evaluator gave no reason.")
+    );
+}
+
+#[test]
+fn scored_evaluation_has_no_unscorable_cause() {
+    let evaluation = parse_evaluation(r#"{ "status": "scored", "final_score": 10 }"#).unwrap();
+    assert_eq!(evaluation.unscorable_cause, None);
+}
+
+#[test]
+fn transcript_for_evaluation_applies_vocabulary_replacements() {
+    let replacements = vec![VocabularyReplacement {
+        from: "clawed".to_string(),
+        to: "Claude".to_string(),
+        added_at: chrono::Utc::now(),
+    }];
+
+    let transcript = transcript_for_evaluation("I asked clawed about it.", &replacements);
+
+    assert!(transcript.contains("Claude"));
+    assert!(!transcript.contains("clawed"));
+}
+
+#[test]
+fn evaluator_schema_offers_unscorable_cause() {
+    let schema = evaluator_response_schema();
+    assert!(schema["properties"]["unscorable_cause"].is_object());
+    let required = schema["required"].as_array().expect("required list");
+    assert!(required.iter().any(|value| value == "unscorable_cause"));
 }
 
 #[test]
@@ -263,4 +464,13 @@ fn evaluation_prompt_sets_critical_but_realistic_tone() {
     assert!(prompt.contains("\"unscorable\""));
     assert!(prompt.contains("scores below 10 require at least one defect"));
     assert!(prompt.contains("7 is acceptable"));
+}
+
+#[test]
+fn evaluation_prompt_asks_for_the_fields_models_tend_to_drop() {
+    let prompt = evaluation_prompt("Title", "Transcript text.", "- Summary");
+
+    assert!(prompt.contains("a severity (minor or major)"));
+    assert!(prompt.contains("always give all three scores"));
+    assert!(prompt.contains("unscorable cause"));
 }
