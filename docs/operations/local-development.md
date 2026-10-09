@@ -56,6 +56,29 @@ Detached mode:
 Detached startup writes supervisor output to `start_app.log` and service logs to `backend.log`,
 `frontend.log`, and `docs.log`.
 
+### Mac launcher
+
+On a Mac with Xcode command line tools, install the local control app from the repo root:
+
+```bash
+./scripts/install_macos_launcher.sh
+```
+
+Open **dAstIll Local** from Spotlight, Launchpad, or `~/Applications`. Its window and menu bar item
+show the reader, backend, docs, and local transcription service status. **Start** runs
+`./start_app.sh --detach`; **Stop** runs `./end_app.sh`. **Restart** starts the stack again after
+stopping it. The launcher also opens the reader and `start_app.log`.
+
+Quitting the launcher leaves the services running. The launcher controls this checkout and uses the
+default local ports (`3543`, `3544`, `4173`, and `5092`). Reinstall it after moving the checkout.
+Starting automatically after login is a separate setting; this launcher starts the stack when you
+press **Start**.
+
+The installer also adds a `post-commit` hook to this checkout. Each successful Git commit rebuilds
+and replaces `dAstIll Local.app`. If the launcher is open, the installer reopens it in the
+background. The backend, reader, docs, and transcription processes keep running during the launcher
+update. Commits from another worktree leave this checkout's installed launcher alone.
+
 Stop everything cleanly:
 
 ```bash

@@ -163,6 +163,20 @@ export function readingMinutes(markdown: string): number {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SHORT_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sept",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 function startOfDay(date: Date): number {
   return new Date(
@@ -188,13 +202,10 @@ export function describeReleaseDay(
   if (daysAgo < 7) {
     return published.toLocaleDateString("en-GB", { weekday: "long" });
   }
-  return published.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    ...(published.getFullYear() === now.getFullYear()
-      ? {}
-      : { year: "numeric" }),
-  });
+  const shortDate = `${published.getDate()} ${SHORT_MONTHS[published.getMonth()]}`;
+  return published.getFullYear() === now.getFullYear()
+    ? shortDate
+    : `${shortDate} ${published.getFullYear()}`;
 }
 
 /** Masthead dateline, e.g. "Tuesday, 6 October 2026". */

@@ -1,0 +1,23 @@
+#!/bin/zsh
+# dAstIll macOS launcher post-commit hook
+set -euo pipefail
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+installed_plist="$HOME/Applications/dAstIll Local.app/Contents/Info.plist"
+if [[ -f "$installed_plist" ]]; then
+  installed_repo=$(/usr/libexec/PlistBuddy -c 'Print DastillRepositoryPath' "$installed_plist" 2>/dev/null || true)
+  if [[ -n "$installed_repo" && "$installed_repo" != "$repo_root" ]]; then
+    echo "dAstIll Local belongs to another checkout; skipping launcher rebuild."
+    exit 0
+  fi
+fi
+
+echo "Updating dAstIll Local after commit..."
+if ! "$repo_root/scripts/install_macos_launcher.sh"; then
+  echo "The commit succeeded, but the dAstIll Local update failed." >&2
+  exit 1
+fi
