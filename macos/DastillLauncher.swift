@@ -267,6 +267,7 @@ private struct LauncherMenu: View {
   @Environment(\.openWindow) private var openWindow
 
   var body: some View {
+    Text("dAstIll Local")
     Text(stack.status)
     Divider()
     Button("Show Controls") {
@@ -289,6 +290,14 @@ private struct LauncherMenu: View {
 @main
 private struct DastillLauncherApp: App {
   @StateObject private var stack = LocalStack()
+  private let menuBarIcon: NSImage = {
+    guard let url = Bundle.main.url(forResource: "dastill", withExtension: "icns"),
+      let image = NSImage(contentsOf: url)
+    else {
+      return NSImage()
+    }
+    return image
+  }()
 
   var body: some Scene {
     WindowGroup("dAstIll Local", id: "controls") {
@@ -299,7 +308,13 @@ private struct DastillLauncherApp: App {
     MenuBarExtra {
       LauncherMenu(stack: stack)
     } label: {
-      Label("dAstIll", systemImage: stack.statusSymbol)
+      Image(nsImage: menuBarIcon)
+        .resizable()
+        .interpolation(.high)
+        .frame(width: 18, height: 18)
+        .opacity(stack.isRunning ? 1 : 0.5)
+        .accessibilityLabel("dAstIll Local — \(stack.status)")
+        .help("dAstIll Local — \(stack.status)")
     }
   }
 }
