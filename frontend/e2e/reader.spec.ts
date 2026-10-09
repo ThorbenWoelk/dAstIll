@@ -288,11 +288,17 @@ test.describe("desktop", () => {
   }) => {
     await openPaper(page, { channels: CHANNELS, stories: STORIES });
     await expect(headline(page)).toBeVisible();
-    const articleBox = await page.locator("article").boundingBox();
-    const railBox = await page
-      .getByRole("complementary", { name: "Also in this edition" })
-      .boundingBox();
-    expect(railBox!.x).toBeGreaterThan(articleBox!.x + articleBox!.width - 1);
+    await expect
+      .poll(async () => {
+        const articleBox = await page.locator("article").boundingBox();
+        const railBox = await page
+          .getByRole("complementary", { name: "Also in this edition" })
+          .boundingBox();
+        return articleBox && railBox
+          ? railBox.x > articleBox.x + articleBox.width - 1
+          : false;
+      })
+      .toBe(true);
     await expect(page.locator(".body")).toHaveCSS("column-count", "2");
   });
 });

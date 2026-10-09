@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim AS whisper-builder
+FROM mirror.gcr.io/library/debian:bookworm-slim AS whisper-builder
 
 ARG WHISPER_CPP_REF=v1.8.4
 
@@ -16,7 +16,7 @@ RUN cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF && \
 RUN mkdir -p /tmp/whisper-libs && \
     find build -name "*.so*" -exec cp -a {} /tmp/whisper-libs/ \;
 
-FROM debian:bookworm-slim
+FROM mirror.gcr.io/library/debian:bookworm-slim
 
 ARG WHISPER_MODEL_URL=https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
 
