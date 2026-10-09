@@ -530,3 +530,95 @@ async fn user_video_states_follow_writes_once_cached() {
     assert!(cached["v2"].acknowledged);
     assert!(cache.get_user_video_states("user-2").await.is_none());
 }
+
+fn user_video_state_at(
+    video_id: &str,
+    acknowledged: bool,
+    secs: i64,
+) -> crate::models::UserVideoState {
+    crate::models::UserVideoState {
+        video_id: video_id.to_string(),
+        acknowledged,
+        updated_at: chrono::DateTime::from_timestamp(secs, 0).expect("timestamp"),
+    }
+}
+
+#[tokio::test]
+async fn publish_keeps_a_read_that_arrived_while_the_map_was_loading() {
+    use std::collections::HashMap;
+
+    let cache = ReadCache::default();
+    let unread = user_video_state_at("v1", false, 1_000);
+    let read = user_video_state_at("v1", true, 2_000);
+    cache.record_user_video_state("user-1", &read).await;
+
+    let published = cache
+        .publish_user_video_states(
+            "user-1".to_string(),
+            HashMap::from([
+                ("v1".to_string(), unread),
+                ("v2".to_string(), user_video_state_at("v2", false, 1_000)),
+            ]),
+        )
+        .await;
+
+    assert!(published["v1"].acknowledged);
+    assert!(!published["v2"].acknowledged);
+    let cached = cache
+        .get_user_video_states("user-1")
+        .await
+        .expect("states cached");
+    assert!(cached["v1"].acknowledged);
+}
+
+#[tokio::test]
+async fn later_publish_does_not_hide_a_read_applied_after_the_first_fill() {
+    use std::collections::HashMap;
+
+    let cache = ReadCache::default();
+    let unread = user_video_state_at("v1", false, 1_000);
+    cache
+        .publish_user_video_states(
+            "user-1".to_string(),
+            HashMap::from([("v1".to_string(), unread.clone())]),
+        )
+        .await;
+    cache
+        .record_user_video_state("user-1", &user_video_state_at("v1", true, 2_000))
+        .await;
+
+    let published = cache
+        .publish_user_video_states(
+            "user-1".to_string(),
+            HashMap::from([("v1".to_string(), unread)]),
+        )
+        .await;
+
+    assert!(published["v1"].acknowledged);
+    assert!(
+        cache
+            .get_user_video_states("user-1")
+            .await
+            .expect("states cached")["v1"]
+            .acknowledged
+    );
+}
+
+#[tokio::test]
+async fn publish_keeps_a_loaded_state_newer_than_a_pending_write() {
+    use std::collections::HashMap;
+
+    let cache = ReadCache::default();
+    cache
+        .record_user_video_state("user-1", &user_video_state_at("v1", false, 1_000))
+        .await;
+
+    let published = cache
+        .publish_user_video_states(
+            "user-1".to_string(),
+            HashMap::from([("v1".to_string(), user_video_state_at("v1", true, 3_000))]),
+        )
+        .await;
+
+    assert!(published["v1"].acknowledged);
+}
