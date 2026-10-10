@@ -1,21 +1,28 @@
 use std::sync::Arc;
 
 use axum::{
-    Extension,
+    Extension, Json,
     body::to_bytes,
     extract::{Query, State},
+    http::StatusCode,
     response::IntoResponse,
 };
 use chrono::Utc;
 use reqwest::Client;
 use serde_json::Value;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::RwLock;
 
-use super::workspace_bootstrap;
+use super::{should_roll_back_new_channel, workspace_bootstrap};
 use crate::{
-    db::{Store, insert_channel, insert_video, list_search_progress_materials, upsert_transcript},
+    db::{
+        Store, get_canonical_channel, get_summary, get_video, insert_channel, insert_video,
+        list_search_progress_materials, upsert_summary, upsert_transcript,
+    },
     handlers::query::WorkspaceBootstrapParams,
-    models::{Channel, ContentStatus, Transcript, TranscriptRenderMode, Video},
+    models::{
+        AddChannelRequest, Channel, ContentStatus, Summary, Transcript, TranscriptRenderMode, Video,
+    },
     search::{SearchProgress, SearchService},
     security::{AccessContext, AccessRole, AuthState},
     services::{
@@ -158,4 +165,180 @@ async fn workspace_bootstrap_includes_search_status_for_initial_render() {
     assert_eq!(payload["channels"].as_array().unwrap().len(), 1);
     assert_eq!(payload["search_status"]["total_sources"].as_u64(), Some(1));
     assert_eq!(payload["search_status"]["ready"].as_u64(), Some(0));
+}
+
+#[test]
+fn failed_sync_rolls_back_only_a_new_channel() {
+    assert!(should_roll_back_new_channel(false));
+    assert!(!should_roll_back_new_channel(true));
+}
+
+const FEED_BODY: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Podcast</title>
+    <link>https://example.com/podcast</link>
+    <description>Weekly deep dives</description>
+    <item>
+      <title>Episode 1</title>
+      <guid>episode-1</guid>
+      <pubDate>Tue, 07 Jan 2025 10:00:00 GMT</pubDate>
+      <description>Episode 1 show notes</description>
+    </item>
+  </channel>
+</rss>"#;
+
+/// Serves one successful feed response, then fails later fetches.
+async fn feed_that_fails_on_the_second_fetch() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut served = 0usize;
+        while served < 2 {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                break;
+            };
+            served += 1;
+            let mut buf = [0u8; 2048];
+            let _ = socket.read(&mut buf).await;
+            let (status, body) = if served == 1 {
+                ("200 OK", FEED_BODY)
+            } else {
+                ("500 Internal Server Error", "")
+            };
+            let response = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: application/rss+xml\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        }
+    });
+    format!("http://127.0.0.1:{port}/feed.xml")
+}
+
+fn signed_in() -> AccessContext {
+    AccessContext {
+        user_id: Some("reader".to_string()),
+        auth_state: AuthState::Authenticated,
+        access_role: AccessRole::User,
+        allowed_channel_ids: Vec::new(),
+        allowed_other_video_ids: Vec::new(),
+    }
+}
+
+#[tokio::test]
+async fn failed_resubscribe_keeps_stored_summaries() {
+    let store = Store::for_test().await;
+    let feed_url = feed_that_fails_on_the_second_fetch().await;
+    let channel_id = crate::services::podcast_feed::podcast_source_id_for_feed_url(&feed_url);
+    let channel = Channel {
+        id: channel_id.clone(),
+        handle: Some(feed_url.clone()),
+        name: "Example Podcast".to_string(),
+        thumbnail_url: None,
+        added_at: Utc::now(),
+        earliest_sync_date: None,
+        earliest_sync_date_user_set: false,
+    };
+    insert_channel(&store, &channel).await.unwrap();
+    insert_video(
+        &store,
+        &Video {
+            id: "kept-episode".to_string(),
+            channel_id: channel_id.clone(),
+            title: "Kept episode".to_string(),
+            thumbnail_url: None,
+            published_at: Utc::now(),
+            is_short: false,
+            transcript_status: ContentStatus::Ready,
+            summary_status: ContentStatus::Ready,
+            acknowledged: false,
+            retry_count: 0,
+            quality_score: Some(8),
+        },
+    )
+    .await
+    .unwrap();
+    upsert_summary(
+        &store,
+        &Summary {
+            video_id: "kept-episode".to_string(),
+            content: "Keep this summary.".to_string(),
+            model_used: None,
+            quality_score: Some(8),
+            quality_note: None,
+            quality_model_used: None,
+            summary_tags: Vec::new(),
+            summary_tags_evaluated: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    let state = test_app_state(store.clone()).await;
+    let error = match super::add_channel(
+        State(state),
+        Extension(signed_in()),
+        Json(AddChannelRequest {
+            input: feed_url,
+            openalex_query: None,
+        }),
+    )
+    .await
+    {
+        Ok(_) => panic!("resubscribe should fail when the second feed fetch fails"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.0, StatusCode::BAD_GATEWAY);
+    assert!(
+        get_canonical_channel(&store, &channel_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        get_video(&store, "kept-episode", false)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        get_summary(&store, "kept-episode")
+            .await
+            .unwrap()
+            .expect("summary stays stored")
+            .content,
+        "Keep this summary."
+    );
+}
+
+#[tokio::test]
+async fn failed_first_subscribe_removes_the_new_channel() {
+    let store = Store::for_test().await;
+    let feed_url = feed_that_fails_on_the_second_fetch().await;
+    let channel_id = crate::services::podcast_feed::podcast_source_id_for_feed_url(&feed_url);
+    let state = test_app_state(store.clone()).await;
+
+    let error = match super::add_channel(
+        State(state),
+        Extension(signed_in()),
+        Json(AddChannelRequest {
+            input: feed_url,
+            openalex_query: None,
+        }),
+    )
+    .await
+    {
+        Ok(_) => panic!("first subscribe should fail when the second feed fetch fails"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.0, StatusCode::BAD_GATEWAY);
+    assert!(
+        get_canonical_channel(&store, &channel_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
