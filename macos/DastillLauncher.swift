@@ -29,8 +29,11 @@ private final class LocalStack: ObservableObject {
 
   let repository: URL
   private let requiredServices: Set<Service>
+  private var recoveryIntent = LocalStackRecoveryIntent()
   private var timer: Timer?
   private var startupMonitor: Task<Void, Never>?
+  private var wakeObserver: NSObjectProtocol?
+  private var wakeRecovery: Task<Void, Never>?
 
   init() {
     let path = Bundle.main.object(forInfoDictionaryKey: "DastillRepositoryPath") as? String ?? ""
@@ -50,6 +53,20 @@ private final class LocalStack: ObservableObject {
     timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
       Task { @MainActor in await self?.refresh() }
     }
+    wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didWakeNotification,
+      object: NSWorkspace.shared,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor in self?.restartAfterWake() }
+    }
+  }
+
+  deinit {
+    if let wakeObserver {
+      NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+    }
+    wakeRecovery?.cancel()
   }
 
   var isRunning: Bool {
@@ -84,6 +101,7 @@ private final class LocalStack: ObservableObject {
       }
     }
     available = found
+    recoveryIntent.observeInitialStack(hasServices: !found.isEmpty)
     hasChecked = true
     if isRunning && isStarting {
       isStarting = false
@@ -93,10 +111,11 @@ private final class LocalStack: ObservableObject {
     }
   }
 
-  func start() {
+  func start(message initialMessage: String? = nil) {
     guard hasChecked && !isWorking && !isStarting else { return }
+    recoveryIntent.startRequested()
     isWorking = true
-    message = nil
+    message = initialMessage
     let repositoryPath = repository.path
     let hadServices = !available.isEmpty
     Task {
@@ -132,6 +151,9 @@ private final class LocalStack: ObservableObject {
 
   func stop() {
     guard hasChecked && !isWorking else { return }
+    recoveryIntent.stopRequested()
+    wakeRecovery?.cancel()
+    wakeRecovery = nil
     startupMonitor?.cancel()
     startupMonitor = nil
     isStarting = false
@@ -157,6 +179,29 @@ private final class LocalStack: ObservableObject {
 
   func openLog() {
     NSWorkspace.shared.open(repository.appendingPathComponent("start_app.log"))
+  }
+
+  private func restartAfterWake() {
+    guard recoveryIntent.shouldRecoverOnWake,
+      !isWorking,
+      !isStarting,
+      wakeRecovery == nil
+    else { return }
+
+    wakeRecovery = Task { [weak self] in
+      guard let self else { return }
+      defer { wakeRecovery = nil }
+      do {
+        // Give macOS a moment to restore networking and mounted filesystems.
+        try await Task.sleep(for: .seconds(3))
+      } catch {
+        return
+      }
+      guard recoveryIntent.shouldRecoverOnWake, !isWorking, !isStarting else { return }
+      await refresh()
+      guard recoveryIntent.shouldRecoverOnWake, !isWorking, !isStarting else { return }
+      start(message: "Restarting after Mac wake…")
+    }
   }
 
   private nonisolated static func isHealthy(_ url: URL) async -> Bool {

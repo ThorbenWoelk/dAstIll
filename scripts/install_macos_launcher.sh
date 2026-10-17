@@ -17,6 +17,7 @@ xcrun swiftc \
   -parse-as-library \
   -O \
   -target "${architecture}-apple-macos13.0" \
+  "$repo_root/macos/LocalStackRecovery.swift" \
   "$repo_root/macos/DastillLauncher.swift" \
   -o "$contents/MacOS/dastill-local"
 

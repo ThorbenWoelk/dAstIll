@@ -69,6 +69,10 @@ show the reader, backend, docs, and local transcription service status. **Start*
 `./start_app.sh --detach`; **Stop** runs `./end_app.sh`. **Restart** starts the stack again after
 stopping it. The launcher also opens the reader and `start_app.log`.
 
+When the Mac wakes from sleep, the launcher restarts a stack that was running before sleep. This
+resets stale frontend and backend connections so an open browser tab can reconnect. A stack stopped
+with **Stop** stays stopped after wake.
+
 Quitting the launcher leaves the services running. The launcher controls this checkout and uses the
 default local ports (`3543`, `3544`, `4173`, and `5092`). Reinstall it after moving the checkout.
 Starting automatically after login is a separate setting; this launcher starts the stack when you

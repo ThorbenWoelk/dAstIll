@@ -89,6 +89,8 @@ Source-of-truth details:
 
 From the repo root, start backend, frontend, and docs with [`./start_app.sh`](./start_app.sh). Use `./start_app.sh --detach` to not tie up the shell (follow with `tail -f start_app.log`).
 
+After app changes, always reinstall and replace the local macOS app with [`./scripts/install_macos_launcher.sh`](./scripts/install_macos_launcher.sh), even when no commit is made. See [local development](./docs/operations/local-development.md#mac-launcher) for the install behavior.
+
 ## Verification
 
 IMPORTANT: Related work or not, ALL TESTS HAVE TO BE GREEN before committing anything.
