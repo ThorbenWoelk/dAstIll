@@ -14,7 +14,7 @@
   let bar = $state<HTMLElement | null>(null);
   let placed = false;
 
-  /** On phones the bar scrolls sideways: keep the active section in view. */
+  /** The bar scrolls sideways: keep the active section in view. */
   $effect(() => {
     void active;
     const current = bar?.querySelector('[aria-current="page"]');
@@ -120,9 +120,8 @@
     }
 
     ul {
-      flex-wrap: wrap;
       justify-content: center;
-      width: auto;
+      min-width: 100%;
       column-gap: var(--space-6);
     }
   }
