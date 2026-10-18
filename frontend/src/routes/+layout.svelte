@@ -39,7 +39,10 @@
   style:--tucked={tucked ? 1 : 0}
 >
   {#if session.status === "signed-in"}
-    {@render children()}
+    <!-- A new reader must not keep the previous paper or write into that account. -->
+    {#key session.reader?.uid ?? ""}
+      {@render children()}
+    {/key}
   {:else}
     <Masthead signedIn={false} />
     {#if session.status === "signed-out"}

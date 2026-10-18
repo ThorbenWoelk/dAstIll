@@ -52,12 +52,19 @@ export class ApiError extends Error {
 }
 
 type TokenSource = () => Promise<string | null>;
+type ReaderIdSource = () => string | null;
 
 let readToken: TokenSource = async () => null;
+let readReaderId: ReaderIdSource = () => null;
 
 /** The session registers how to read the current Firebase ID token. */
 export function useTokenSource(source: TokenSource) {
   readToken = source;
+}
+
+/** The session registers how to read the signed-in reader id. */
+export function useReaderIdentity(source: ReaderIdSource) {
+  readReaderId = source;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -65,7 +72,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
+  const readerId = readReaderId();
   const token = await readToken();
+  // The token is whatever account is current after the await. Drop the call
+  // when the reader changed so one account cannot write into another.
+  if (readReaderId() !== readerId) {
+    throw new ApiError("Please sign in again.", 401);
+  }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
