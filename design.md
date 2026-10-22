@@ -90,7 +90,8 @@ Source: [`assets/dastill-icon.svg`](./assets/dastill-icon.svg). A kicker-red pla
 | `Masthead` | Dateline (long date from 640px, short date on phones) with status and actions, then the `dAstIll` title and the 2px rule. Every screen uses it. The page links (Front page, Highlights, Finished, Sections) are one `nav`: a tab bar fixed along the bottom on phones, quiet links in the dateline from 640px. The current page uses `aria-current="page"`: kicker color and a 2px kicker rule in the tab bar, bold in the dateline. The front page hides its own dateline link. The optional nav slot renders after the header so it can stick. |
 | `SectionNav` | "Front page" plus one button per channel with unread counts. Stays on one line, scrolls sideways when needed, and keeps the active section in view at every width. On phones it runs full width and sticks to the top of the screen. From 640px it centers when all sections fit and scrolls with the page. The active section uses `aria-current="page"` and the kicker color. |
 | `StoryPager` | "‹ Previous", "2 of 14", "Next ›" above the lead story. Moves through the section without marking anything read. A turn that is not possible is hidden but keeps its place. |
-| `StoryArticle` | Kicker, headline, standfirst, byline, "At a glance" box, and body. Body is one column on phones and two columns from 960px. `entrance` says how a new story arrives: printed in place (`.print-in`) or turned in from the side it came from (`.turn-in-next`, `.turn-in-previous`). Given `onHighlight`, it shows a Highlight button under a text selection and marks saved highlights in `--marker`. Tapping a mark offers "Remove highlight". |
+| `StoryArticle` | Kicker, headline, standfirst, byline, "In this story" contents, "At a glance" box, and body. Body is one column on phones and two columns from 960px. `entrance` says how a new story arrives: printed in place (`.print-in`) or turned in from the side it came from (`.turn-in-next`, `.turn-in-previous`). Given `onHighlight`, it shows a Highlight button under a text selection and marks saved highlights in `--marker`. Tapping a mark offers "Remove highlight". |
+| `StoryContents` | "In this story" and one quiet label button per section, in one line under the byline that scrolls sideways when needed. See [Story contents](#story-contents). |
 | `ReadBar` | "Mark as read" and, after a read, an "Undo" button. Sticky on phones, just above the tab bar, and at the screen edge while the tab bar is tucked away. Inline after the article from 960px. |
 | `AlsoInEdition` | The next six stories in the section. Each one is a button that makes it the lead. Below the article on phones, a sticky right column from 960px. |
 | `EditionNotice` | A non-blocking message (a failed request) with Dismiss. |
@@ -122,6 +123,15 @@ Cleaning model output before the split:
 - When the model wrote the sections twice (a second glance or overview after Key Points), only the last complete set is kept.
 
 The standfirst is plain text built from the parsed markdown, so `\*`, `&amp;`, `snake_case`, and `5 * 3` read as the writer meant. Sentence ends skip abbreviations (Dr., Mr., vs., e.g., U.S., etc.) and initials (J. R.), and the next sentence must start with a capital letter, a digit, or a quote.
+
+### Story contents
+
+Long stories get a contents line under the byline, so a reader can jump to the standard sections.
+
+- `src/lib/edition/contents.ts` picks the entries: "At a glance" when the box exists, then the body headings at the top level used in the body (usually `##` Key Points, Takeaways, and a long Overview). Subheadings below that level are left out.
+- The line only shows with two or more entries.
+- Entries are read from the rendered body headings, so the list always matches what is on the page.
+- A jump scrolls the section to the top (smoothly unless `prefers-reduced-motion`), clear of the sticky section bar on phones, and moves focus to its heading. The contents line is `data-passage-skip`.
 
 Summary markdown is model output. Always render it through `renderMarkdown` (`marked` plus DOMPurify). Raw HTML in the markdown, like `<PricingTable />` written as prose, shows as text instead of being removed. Timestamps like `[12:34]` stay text and never become links. DOMPurify still cleans the result, and rendering fails closed to plain text when the sanitizer is unavailable.
 

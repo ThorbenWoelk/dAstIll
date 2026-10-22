@@ -217,6 +217,64 @@ test("a TL;DR summary with tags and timestamps in prose reads like the standard 
   await expect(body.getByRole("link")).toHaveCount(0);
 });
 
+test("the contents line jumps to the sections of a long story", async ({
+  page,
+}) => {
+  const detail = "A long paragraph of detail. ".repeat(80);
+  await openPaper(page, {
+    channels: CHANNELS,
+    stories: STORIES.map((story) => ({
+      ...story,
+      summary: `## At a glance
+- The main point.
+
+## Overview
+Standfirst for ${story.title}.
+
+## Key Points
+${detail}
+
+### Proposed Solutions
+${detail}
+
+## Takeaways
+- Something to remember.
+`,
+    })),
+  });
+  const contents = page.getByRole("navigation", { name: "In this story" });
+  await expect(contents.getByRole("button")).toHaveText([
+    "At a glance",
+    "Key Points",
+    "Takeaways",
+  ]);
+
+  const takeaways = page.locator(".body h2", { hasText: "Takeaways" });
+  await expect(takeaways).not.toBeInViewport();
+  await contents.getByRole("button", { name: "Takeaways" }).click();
+  await expect(takeaways).toBeInViewport();
+  await expect(takeaways).toBeFocused();
+
+  // Contents text is never part of a highlight passage.
+  await expect(contents).toHaveAttribute("data-passage-skip", "");
+});
+
+test("a short story without sections has no contents line", async ({
+  page,
+}) => {
+  await openPaper(page, {
+    channels: CHANNELS,
+    stories: STORIES.map((story) => ({
+      ...story,
+      summary: "Just one paragraph about the video.",
+    })),
+  });
+  await expect(headline(page)).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "In this story" }),
+  ).toHaveCount(0);
+});
+
 test("a reader without channels is sent to add one", async ({ page }) => {
   await openPaper(page, { channels: [], stories: [] });
   await expect(
