@@ -6,6 +6,55 @@ use crate::models::VideoInfo;
 use super::data_api::LiveBroadcastState;
 use super::{WatchMetadata, WatchVideoDetails, YouTubeError, YouTubeService};
 
+/// Hard cap on HTML fetched while resolving a subscribe URL to a channel.
+///
+/// `POST /api/channels` classifies any input containing `youtube.com` / `youtu.be`
+/// as a YouTube channel. The fallback scraper then GETs that URL. Without a host
+/// check and body cap, `https://youtube.com.evil.example/` (or a query-string
+/// lookalike) can stream unbounded HTML and OOM Cloud Run (`1024Mi`, one instance).
+pub(crate) const MAX_YOUTUBE_PAGE_BYTES: u64 = 5 * 1024 * 1024;
+
+fn youtube_page_host_is_allowed(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    host == "youtu.be"
+        || host == "www.youtu.be"
+        || host == "youtube.com"
+        || host.ends_with(".youtube.com")
+}
+
+pub(crate) fn youtube_page_url_is_allowed(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url.trim()) else {
+        return false;
+    };
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return false;
+    }
+    parsed.host_str().is_some_and(youtube_page_host_is_allowed)
+}
+
+pub(crate) async fn read_response_text_limited(
+    response: reqwest::Response,
+    max_bytes: u64,
+) -> Result<String, YouTubeError> {
+    if let Some(length) = response.content_length() {
+        if length > max_bytes {
+            return Err(YouTubeError::PageTooLarge);
+        }
+    }
+
+    let mut body = Vec::new();
+    let mut response = response;
+    while let Some(chunk) = response.chunk().await.map_err(YouTubeError::FetchError)? {
+        let next_len = body.len().saturating_add(chunk.len());
+        if next_len as u64 > max_bytes {
+            return Err(YouTubeError::PageTooLarge);
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
 fn video_info_missing_channel_identity(info: &VideoInfo) -> bool {
     info.channel_id
         .as_deref()
@@ -67,6 +116,10 @@ impl YouTubeService {
         &self,
         url: &str,
     ) -> Result<(String, String, Option<String>), YouTubeError> {
+        if !youtube_page_url_is_allowed(url) {
+            return Err(YouTubeError::NotYouTubeUrl);
+        }
+
         let response = self
             .client
             .get(url)
@@ -81,7 +134,7 @@ impl YouTubeService {
             return Err(YouTubeError::ChannelNotFound);
         }
 
-        let html = response.text().await?;
+        let html = read_response_text_limited(response, MAX_YOUTUBE_PAGE_BYTES).await?;
         let document = Html::parse_document(&html);
 
         // Look for channel ID in meta tags or page content
