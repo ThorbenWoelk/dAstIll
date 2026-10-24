@@ -1,9 +1,15 @@
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::thread;
+
 use super::{
-    PodcastFeedService, build_podcast_resolved_source, build_podcast_sync_batch,
-    caption_payload_to_text, item_transcript_references, json_transcript_to_text,
+    MAX_PODCAST_FETCH_BYTES, PodcastFeedService, build_podcast_resolved_source,
+    build_podcast_sync_batch, caption_payload_to_text, item_transcript_references,
+    json_transcript_to_text, read_response_bytes_limited, read_response_text_limited,
     transcript_payload_to_text,
 };
 use crate::models::{ContentItemKind, ContentSourceKind, MediaAssetKind, ProviderKind};
+use crate::services::providers::FeedSourceAdapter;
 
 fn sample_feed() -> rss::Channel {
     rss::Channel::read_from(
@@ -131,4 +137,112 @@ fn transcript_payload_uses_actual_transcript_formats_not_description() {
 #[test]
 fn service_is_constructible() {
     let _service = PodcastFeedService::new();
+}
+
+fn serve_once(status_line: &str, headers: &str, body: &[u8]) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+    let addr = listener.local_addr().expect("listener should have addr");
+    let status_line = status_line.to_string();
+    let headers = headers.to_string();
+    let body = body.to_vec();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept should succeed");
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let response = [
+            status_line.as_bytes(),
+            b"\r\n",
+            headers.as_bytes(),
+            b"\r\n\r\n",
+            body.as_slice(),
+        ]
+        .concat();
+        stream.write_all(&response).expect("response should write");
+    });
+    format!("http://{addr}/")
+}
+
+fn sample_feed_body() -> Vec<u8> {
+    br#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Example Podcast</title>
+            <link>https://example.com/podcast</link>
+            <description>Weekly deep dives</description>
+          </channel>
+        </rss>"#
+        .to_vec()
+}
+
+#[tokio::test]
+async fn read_response_bytes_limited_rejects_content_length_over_cap() {
+    let url = serve_once(
+        "HTTP/1.1 200 OK",
+        &format!("Content-Length: {}", MAX_PODCAST_FETCH_BYTES + 1),
+        b"x",
+    );
+    let response = reqwest::get(&url).await.expect("request should send");
+    let err = read_response_bytes_limited(response, MAX_PODCAST_FETCH_BYTES)
+        .await
+        .expect_err("oversized content-length should fail");
+    assert!(
+        err.to_string().contains("too large"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn read_response_text_limited_rejects_streamed_body_over_cap() {
+    let oversized = vec![b'a'; (MAX_PODCAST_FETCH_BYTES as usize) + 8];
+    let url = serve_once(
+        "HTTP/1.1 200 OK",
+        "Content-Type: application/rss+xml",
+        &oversized,
+    );
+    let response = reqwest::get(&url).await.expect("request should send");
+    let err = read_response_text_limited(response, MAX_PODCAST_FETCH_BYTES)
+        .await
+        .expect_err("oversized body should fail");
+    assert!(
+        err.to_string().contains("too large"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn resolve_feed_source_rejects_oversized_rss_without_buffering_full_body() {
+    let oversized = vec![b'a'; (MAX_PODCAST_FETCH_BYTES as usize) + 32];
+    let url = serve_once(
+        "HTTP/1.1 200 OK",
+        "Content-Type: application/rss+xml",
+        &oversized,
+    );
+    let service = PodcastFeedService::new();
+    let err = service
+        .resolve_feed_source(&url)
+        .await
+        .expect_err("oversized podcast RSS should fail");
+    assert!(
+        err.to_string().contains("too large"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn resolve_feed_source_accepts_small_rss() {
+    let body = sample_feed_body();
+    let url = serve_once(
+        "HTTP/1.1 200 OK",
+        &format!(
+            "Content-Type: application/rss+xml\r\nContent-Length: {}",
+            body.len()
+        ),
+        &body,
+    );
+    let service = PodcastFeedService::new();
+    let resolved = service
+        .resolve_feed_source(&url)
+        .await
+        .expect("small podcast RSS should resolve");
+    assert_eq!(resolved.source.title, "Example Podcast");
 }

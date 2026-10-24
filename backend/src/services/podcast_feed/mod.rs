@@ -19,6 +19,52 @@ use super::providers::{
 };
 use super::transcript::{fetch_public_response, validate_public_media_url};
 
+/// Hard cap on RSS/transcript bodies fetched during podcast subscribe/sync.
+///
+/// Subscribe accepts attacker-controlled feed URLs. Buffering unbounded
+/// `.bytes()` / `.text()` responses lets a single authenticated request OOM
+/// the Cloud Run instance (`memory = 1024Mi`, `max_instance_count = 1`).
+pub(crate) const MAX_PODCAST_FETCH_BYTES: u64 = 5 * 1024 * 1024;
+
+pub(crate) async fn read_response_bytes_limited(
+    response: reqwest::Response,
+    max_bytes: u64,
+) -> Result<Vec<u8>, ProviderAdapterError> {
+    if let Some(length) = response.content_length() {
+        if length > max_bytes {
+            return Err(ProviderAdapterError::Upstream(format!(
+                "podcast response is too large: {length} bytes"
+            )));
+        }
+    }
+
+    let mut body = Vec::new();
+    let mut response = response;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
+    {
+        let next_len = body.len().saturating_add(chunk.len());
+        if next_len as u64 > max_bytes {
+            return Err(ProviderAdapterError::Upstream(format!(
+                "podcast response is too large: more than {max_bytes} bytes"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(body)
+}
+
+pub(crate) async fn read_response_text_limited(
+    response: reqwest::Response,
+    max_bytes: u64,
+) -> Result<String, ProviderAdapterError> {
+    let body = read_response_bytes_limited(response, max_bytes).await?;
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
 #[derive(Clone)]
 pub struct PodcastFeedService {
     client: Client,
@@ -595,17 +641,15 @@ impl PodcastFeedService {
             ));
         }
 
-        let bytes = self
+        let response = self
             .client
             .get(url)
             .send()
             .await
             .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
             .error_for_status()
-            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?
-            .bytes()
-            .await
             .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
+        let bytes = read_response_bytes_limited(response, MAX_PODCAST_FETCH_BYTES).await?;
 
         Self::parse_feed(&bytes)
     }
@@ -653,10 +697,7 @@ impl PodcastFeedService {
             )));
         }
 
-        let body = response
-            .text()
-            .await
-            .map_err(|error| ProviderAdapterError::Upstream(error.to_string()))?;
+        let body = read_response_text_limited(response, MAX_PODCAST_FETCH_BYTES).await?;
 
         Ok(transcript_payload_to_text(
             &body,
