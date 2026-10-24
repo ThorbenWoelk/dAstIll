@@ -3,7 +3,7 @@ use axum::http::{HeaderMap, HeaderValue};
 use super::{
     AUTH_STATE_HEADER, AccessContext, AccessRole, AuthState, CLIENT_IP_HEADER, OPERATOR_ROLE,
     ROLE_HEADER, RateLimitTier, RequestRateLimiter, USER_ID_HEADER, build_access_context,
-    can_use_db_inspect,
+    can_use_db_inspect, require_operator_role,
 };
 use crate::config::SecurityRuntimeConfig;
 
@@ -149,4 +149,79 @@ fn db_inspect_is_available_for_read_only_queries() {
         allowed_channel_ids: vec!["channel-a".to_string()],
         allowed_other_video_ids: Vec::new(),
     }));
+}
+
+use axum::{
+    Router,
+    body::Body,
+    http::{Request, StatusCode},
+    middleware,
+    routing::post,
+};
+use http_body_util::BodyExt;
+use tower::ServiceExt;
+
+fn access_context(role: AccessRole) -> AccessContext {
+    AccessContext {
+        user_id: Some("firebase-uid-123".to_string()),
+        auth_state: AuthState::Authenticated,
+        access_role: role,
+        allowed_channel_ids: vec!["channel-a".to_string()],
+        allowed_other_video_ids: Vec::new(),
+    }
+}
+
+async fn post_with_access_context(role: AccessRole) -> (StatusCode, String) {
+    let app = Router::new()
+        .route(
+            "/api/videos/info/backfill",
+            post(|| async { StatusCode::OK }).layer(middleware::from_fn(require_operator_role)),
+        )
+        .layer(middleware::from_fn(
+            move |mut request: Request<Body>, next: axum::middleware::Next| {
+                let role = role;
+                async move {
+                    request.extensions_mut().insert(access_context(role));
+                    next.run(request).await
+                }
+            },
+        ));
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/videos/info/backfill")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    let body = String::from_utf8(
+        response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    (status, body)
+}
+
+#[tokio::test]
+async fn require_operator_role_rejects_non_operator_video_info_backfill() {
+    let (status, body) = post_with_access_context(AccessRole::User).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body, "Operator access required");
+
+    let (status, body) = post_with_access_context(AccessRole::Anonymous).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body, "Operator access required");
+}
+
+#[tokio::test]
+async fn require_operator_role_allows_operator_video_info_backfill() {
+    let (status, body) = post_with_access_context(AccessRole::Operator).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.is_empty());
 }

@@ -433,6 +433,7 @@ pub async fn ensure_video_info(
     params(VideoInfoBackfillParams),
     responses(
         (status = 200, description = "Video info backfill result", body = crate::openapi::VideoInfoBackfillResponse),
+        (status = 403, description = "Operator access required", body = String),
         (status = 500, description = "Request failed", body = String)
     )
 )]
