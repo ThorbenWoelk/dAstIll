@@ -61,3 +61,11 @@ link_env_file "frontend/.env" "frontend.env" "frontend/.env.example"
 if ! grep -Eq '^PROCESSING_ROLE=' "${shared_env_dir}/backend.env"; then
 	printf '\nPROCESSING_ROLE=local-fetcher\n' >> "${shared_env_dir}/backend.env"
 fi
+
+for entry in 'SUMMARIZE_PATH:summarize' 'YTDLP_PATH:yt-dlp'; do
+	key=${entry%%:*}
+	command_name=${entry#*:}
+	if ! grep -Eq "^${key}=" "${shared_env_dir}/backend.env" && command -v "$command_name" >/dev/null 2>&1; then
+		printf '\n%s=%s\n' "$key" "$(command -v "$command_name")" >> "${shared_env_dir}/backend.env"
+	fi
+done

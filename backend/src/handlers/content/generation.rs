@@ -312,6 +312,9 @@ fn transcript_error_statuses(
 ) -> (StatusCode, ContentStatus) {
     use crate::services::transcript::TranscriptError;
     match err {
+        TranscriptError::IoError(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)
+        }
         TranscriptError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, ContentStatus::Pending),
         TranscriptError::AsrUnavailable | TranscriptError::AsrTemporarilyUnavailable(_) => {
             (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)

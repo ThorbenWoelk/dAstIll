@@ -834,7 +834,10 @@ impl TranscriptService {
                 path = %self.ytdlp_path,
                 "yt-dlp not found, skipping fallback"
             );
-            return Err(TranscriptError::NoTranscript);
+            return Err(TranscriptError::IoError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("yt-dlp is not installed at {}", self.ytdlp_path),
+            )));
         }
 
         tracing::info!(video_id = %video_id, "running yt-dlp fallback for transcript");

@@ -65,6 +65,12 @@ requested through the shared GCS bucket even when no browser is open. Hosted Clo
 for a standalone development instance. Existing articles remain available while the Mac is offline;
 new YouTube requests wait for it to return.
 
+Install the caption fallback on macOS with `brew install yt-dlp deno`, then run
+`./scripts/link_shared_env.sh` to record executable paths that are missing from the shared env.
+If `YTDLP_PATH` is already set, check that it names the installed executable (`command -v yt-dlp`).
+Restart the local backend after changing these values. A missing extractor defers the job instead
+of marking the video as having no transcript.
+
 On a Mac with Xcode command line tools, install the local control app from the repo root:
 
 ```bash

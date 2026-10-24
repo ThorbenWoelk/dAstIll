@@ -140,7 +140,7 @@ async fn extract_detects_no_transcript_from_stderr() {
 }
 
 #[tokio::test]
-async fn extract_rejects_empty_output_as_no_transcript() {
+async fn extract_defers_empty_output_when_fallback_is_missing() {
     let dir = tempdir().expect("temp dir should be created");
     let script_path = dir.path().join("fake_summarize.sh");
     // Mimics summarize exiting 0 with only whitespace when captions are unavailable.
@@ -152,8 +152,10 @@ async fn extract_rejects_empty_output_as_no_transcript() {
     perms.set_mode(0o755);
     fs::set_permissions(&script_path, perms).expect("script should be executable");
 
-    let service =
-        TranscriptService::with_path(script_path.to_str().expect("script path should be utf-8"));
+    let service = TranscriptService::with_paths(
+        script_path.to_str().expect("script path should be utf-8"),
+        dir.path().join("missing-yt-dlp").to_str().unwrap(),
+    );
 
     let err = service
         .extract("abc123def45")
@@ -161,8 +163,8 @@ async fn extract_rejects_empty_output_as_no_transcript() {
         .expect_err("should fail when output is empty");
 
     assert!(
-        matches!(err, super::TranscriptError::NoTranscript),
-        "expected NoTranscript, got {err:?}"
+        matches!(err, super::TranscriptError::IoError(ref error) if error.kind() == std::io::ErrorKind::NotFound),
+        "expected a missing fallback extractor, got {err:?}"
     );
 }
 
@@ -245,8 +247,10 @@ echo "Enjoy the videos and music you love, upload original content, and share it
     perms.set_mode(0o755);
     fs::set_permissions(&script_path, perms).expect("script should be executable");
 
-    let service =
-        TranscriptService::with_path(script_path.to_str().expect("script path should be utf-8"));
+    let service = TranscriptService::with_paths(
+        script_path.to_str().expect("script path should be utf-8"),
+        dir.path().join("missing-yt-dlp").to_str().unwrap(),
+    );
 
     let err = service
         .extract("abc123def45")
@@ -254,8 +258,8 @@ echo "Enjoy the videos and music you love, upload original content, and share it
         .expect_err("should fail when output is a site-wide placeholder");
 
     assert!(
-        matches!(err, super::TranscriptError::NoTranscript),
-        "expected NoTranscript, got {err:?}"
+        matches!(err, super::TranscriptError::IoError(ref error) if error.kind() == std::io::ErrorKind::NotFound),
+        "expected a missing fallback extractor, got {err:?}"
     );
 }
 

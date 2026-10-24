@@ -8,6 +8,18 @@ use crate::models::{ContentStatus, Transcript, TranscriptRenderMode};
 use crate::services::summarizer::{SummarizerError, SummaryOutputProblem};
 use axum::http::StatusCode;
 
+#[test]
+fn missing_local_extractor_keeps_transcripts_pending() {
+    let error = crate::services::transcript::TranscriptError::IoError(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "yt-dlp missing",
+    ));
+    assert_eq!(
+        super::transcript_error_statuses(&error),
+        (StatusCode::SERVICE_UNAVAILABLE, ContentStatus::Pending)
+    );
+}
+
 fn make_transcript(raw: Option<&str>, formatted: Option<&str>) -> Transcript {
     Transcript {
         video_id: "vid1".to_string(),
