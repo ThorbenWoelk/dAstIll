@@ -3,6 +3,8 @@
   import type { CreateHighlightRequest, Highlight } from "$lib/api";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import HighlightIcon from "$lib/components/icons/HighlightIcon.svelte";
+  import StoryContents from "$lib/components/StoryContents.svelte";
+  import { storyContents, type ContentsEntry } from "$lib/edition/contents";
   import { renderMarkdown } from "$lib/edition/markdown";
   import {
     describeReleaseDay,
@@ -50,6 +52,19 @@
   const minutes = $derived(readingMinutes(story.summary));
 
   let article = $state<HTMLElement | null>(null);
+  let glanceBox = $state<HTMLElement | null>(null);
+  let bodyColumn = $state<HTMLElement | null>(null);
+  /** The rendered body headings the contents line can jump to. */
+  let bodyHeadings = $state<HTMLElement[]>([]);
+  const contents = $derived(
+    storyContents(
+      bodyHeadings.map((heading) => ({
+        level: Number(heading.tagName.slice(1)),
+        title: heading.textContent ?? "",
+      })),
+      Boolean(glanceHtml),
+    ),
+  );
   /** The selection the reader may turn into a highlight. */
   let selection = $state<{
     draft: CreateHighlightRequest;
@@ -67,6 +82,32 @@
     const passage = readPassage(root);
     markHighlights(passage, placeHighlights(passage.text, current));
   });
+
+  $effect(() => {
+    void bodyHtml;
+    bodyHeadings = bodyColumn
+      ? Array.from(
+          bodyColumn.querySelectorAll<HTMLElement>(
+            ":scope > h1, :scope > h2, :scope > h3",
+          ),
+        )
+      : [];
+  });
+
+  function jumpTo(entry: ContentsEntry) {
+    const target =
+      entry.heading === null ? glanceBox : bodyHeadings[entry.heading];
+    if (!target) return;
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)")
+      .matches;
+    target.scrollIntoView({
+      behavior: smooth ? "smooth" : "auto",
+      block: "start",
+    });
+    // Keyboard and screen reader users continue from the section.
+    target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+  }
 
   $effect(() => {
     if (tapped && !highlights.some((h) => h.id === tapped?.id)) tapped = null;
@@ -183,14 +224,22 @@
       </a>
     </p>
 
+    {#if contents.length > 0}
+      <StoryContents entries={contents} onJump={jumpTo} />
+    {/if}
+
     {#if glanceHtml}
-      <aside class="glance" aria-labelledby="glance-heading">
+      <aside
+        class="glance"
+        aria-labelledby="glance-heading"
+        bind:this={glanceBox}
+      >
         <h2 id="glance-heading" class="label" data-passage-skip>At a glance</h2>
         <div class="glance-list">{@html glanceHtml}</div>
       </aside>
     {/if}
 
-    <div class="body">{@html bodyHtml}</div>
+    <div class="body" bind:this={bodyColumn}>{@html bodyHtml}</div>
 
     {#if selection}
       <div
@@ -302,6 +351,14 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
+  }
+
+  /* Clear of the section bar that sticks to the top on phones. */
+  .glance,
+  .body :global(:is(h1, h2, h3)) {
+    scroll-margin-top: calc(
+      var(--touch) + env(safe-area-inset-top) + var(--space-4)
+    );
   }
 
   .glance {
