@@ -34,12 +34,52 @@ pub enum SummaryOutputProblem {
     LooksTruncated,
     #[error("summary stopped at the model's output token limit")]
     HitOutputLimit,
+    #[error("summary still contains the model's own notes about writing it")]
+    ContainsReasoning,
 }
 
 const THINK_TAGS: &[(&str, &str)] = &[("<think>", "</think>"), ("<thinking>", "</thinking>")];
 
+/// Line starts that show the model planning the summary instead of writing it. Matched on
+/// whole lines only, so a bullet or a quote that begins the same way is kept.
+const REASONING_LINE_PREFIXES: &[&str] = &[
+    "let me ",
+    "i'll ",
+    "i will ",
+    "now write",
+    "write it now",
+    "first, i need to",
+];
+
+/// Phrases that only appear when the model talks about its own task. A summary never names
+/// the section headings it is asked to use, so a sentence that does is a note about them.
+const REASONING_PHRASES: &[&str] = &[
+    "the instructions say",
+    "per the instructions",
+    "## at a glance",
+    "## tl;dr",
+    "## overview",
+    "## key points",
+    "## takeaways",
+];
+
+/// Line starts of text that follows a finished summary: chatter aimed at the reader, and
+/// notes the model wrote to itself once it was done ("That's 6 bullets. Good.").
 const CLOSING_CHATTER_PREFIXES: &[&str] = &[
-    "let me know",
+    "let me ",
+    "i'll ",
+    "i will ",
+    "that's ",
+    "good.",
+    "good,",
+    "done.",
+    "alright",
+    "okay",
+    "format check",
+    "length:",
+    "length looks",
+    "now write",
+    "write it now",
     "i hope this helps",
     "hope this helps",
     "i hope this summary",
@@ -60,15 +100,16 @@ const CLOSING_CHATTER_PREFIXES: &[&str] = &[
 /// 1. Remove `<think>...</think>` blocks. When only a closing `</think>` is present and an
 ///    `## At a glance` heading follows it, everything before the tag is reasoning.
 /// 2. Remove a code fence that wraps the whole output.
-/// 3. Drop everything before the first expected section heading. When the full section
-///    set appears more than once (a draft, then the final version), keep the last
-///    complete set.
-/// 4. Drop a leading title line such as `# Video Summary`.
-/// 5. Drop closing chatter such as "Let me know if you want more detail."
+/// 3. Put a section heading that was glued onto the end of a sentence back on its own line.
+/// 4. Drop everything before the model's last attempt. When the section set appears more
+///    than once (a draft or an outline, then the final version), keep the last set.
+/// 5. Drop a leading title line such as `# Video Summary`.
+/// 6. Drop closing chatter such as "Let me know if you want more detail."
 pub(crate) fn clean_summary_output(raw: &str) -> String {
     let text = raw.replace("\r\n", "\n");
     let text = strip_reasoning_blocks(&text);
     let text = strip_wrapping_fence(&text);
+    let text = split_glued_section_headings(&text);
     let lines: Vec<&str> = text.lines().collect();
     let lines = select_summary_sections(&lines);
     let lines = drop_leading_title_line(lines);
@@ -98,6 +139,9 @@ pub(crate) fn check_summary_output(
     }
     if !sections.contains(&SummarySection::KeyPoints) {
         return Err(SummaryOutputProblem::MissingKeyPoints);
+    }
+    if lines.iter().any(|line| reads_as_model_notes(line)) {
+        return Err(SummaryOutputProblem::ContainsReasoning);
     }
     if summary.chars().any(is_han_or_kana) && !source_text.chars().any(is_han_or_kana) {
         return Err(SummaryOutputProblem::UnexpectedScript);
@@ -134,8 +178,69 @@ fn is_fence_line(line: &str) -> bool {
     line.trim_start().starts_with("```")
 }
 
+/// True when a line is the model thinking out loud about the summary it is writing.
+///
+/// Only full lines count. Summary bullets and headings keep their own wording even when it
+/// starts the same way, so a quoted "Let me know ..." from the video stays in the summary.
+fn reads_as_model_notes(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with('#') {
+        return false;
+    }
+    let has_think_tag = THINK_TAGS.iter().any(|(open, close)| {
+        find_tag(trimmed, open, 0).is_some() || find_tag(trimmed, close, 0).is_some()
+    });
+    let plain = trimmed.to_ascii_lowercase();
+    has_think_tag
+        || REASONING_PHRASES
+            .iter()
+            .any(|phrase| plain.contains(phrase))
+        || REASONING_LINE_PREFIXES
+            .iter()
+            .any(|prefix| plain.starts_with(prefix))
+}
+
+/// Byte offset of an expected section heading that starts in the middle of a line, after
+/// other text. Models end a note with the next heading glued to it, as in
+/// `Let me write the final version.## At a glance`.
+///
+/// The text from the `#` to the end of the line has to read as a heading on its own, so a
+/// heading named inside a sentence (`start with "## At a glance".`) is not a match.
+fn glued_section_heading_start(line: &str) -> Option<usize> {
+    line.char_indices()
+        .skip(1)
+        .filter(|&(_, ch)| ch == '#')
+        .find(|&(at, _)| {
+            let before = line[..at].chars().next_back();
+            before.is_some_and(|ch| ch != '#' && !ch.is_whitespace())
+                && section_heading(&line[at..]).is_some()
+        })
+        .map(|(at, _)| at)
+}
+
+/// Move a glued section heading onto its own line so the section selection can see it.
+fn split_glued_section_headings(text: &str) -> String {
+    let mut in_fence = false;
+    let mut lines: Vec<&str> = Vec::new();
+    for line in text.lines() {
+        if is_fence_line(line) {
+            in_fence = !in_fence;
+            lines.push(line);
+            continue;
+        }
+        match glued_section_heading_start(line).filter(|_| !in_fence) {
+            Some(at) => {
+                lines.push(&line[..at]);
+                lines.push(&line[at..]);
+            }
+            None => lines.push(line),
+        }
+    }
+    lines.join("\n")
+}
+
 /// Expected section headings with their line index, ignoring lines inside code fences.
-fn section_headings(lines: &[&str]) -> Vec<(usize, SummarySection)> {
+fn heading_lines(lines: &[&str]) -> Vec<(usize, SummarySection)> {
     let mut in_fence = false;
     let mut headings = Vec::new();
     for (index, line) in lines.iter().enumerate() {
@@ -151,6 +256,29 @@ fn section_headings(lines: &[&str]) -> Vec<(usize, SummarySection)> {
         }
     }
     headings
+}
+
+/// Section headings that have text under them.
+///
+/// Models sometimes write the headings alone first, as an outline, before writing the
+/// summary. An empty section is not a section, so those headings are left out and the
+/// outline cannot pass as the summary.
+fn section_headings(lines: &[&str]) -> Vec<(usize, SummarySection)> {
+    let headings = heading_lines(lines);
+    headings
+        .iter()
+        .enumerate()
+        .filter(|(position, (at, _))| {
+            let next_heading = headings
+                .get(position + 1)
+                .map(|(next, _)| *next)
+                .unwrap_or(lines.len());
+            lines[at + 1..next_heading]
+                .iter()
+                .any(|line| !line.trim().is_empty())
+        })
+        .map(|(_, heading)| *heading)
+        .collect()
 }
 
 /// Find a reasoning tag, ignoring case. A tag written as code (`` `<think>` ``) is part
@@ -237,45 +365,39 @@ fn strip_wrapping_fence(text: &str) -> String {
         .join("\n")
 }
 
-/// Keep the summary sections and drop text before them. When the section set repeats,
-/// keep the last set that has both a glance section and Key Points.
+/// Keep the model's last attempt at the summary and drop the text before it.
+///
+/// A model that restarts writes a draft or an outline first, then notes about what to fix,
+/// then the summary. Only the last set of sections is the answer. An attempt that is missing
+/// sections is rejected by [`check_summary_output`] and summarized again, which is better
+/// than storing an earlier attempt together with the notes between the two.
 fn select_summary_sections<'a, 'b>(lines: &'b [&'a str]) -> &'b [&'a str] {
     let headings = section_headings(lines);
-    let Some(&(first_heading, _)) = headings.first() else {
+    if headings.is_empty() {
         return lines;
-    };
-
-    // A new set starts when the glance or overview section repeats. Key Points can repeat
-    // on purpose, for example in a summary of a show with two segments.
-    let mut sets: Vec<Vec<(usize, SummarySection)>> = Vec::new();
-    for heading in headings {
-        let starts_new_set = matches!(heading.1, SummarySection::Glance | SummarySection::Overview)
-            && sets
-                .last()
-                .is_none_or(|set| set.iter().any(|(_, section)| *section == heading.1));
-        match sets.last_mut() {
-            Some(set) if !starts_new_set => set.push(heading),
-            _ => sets.push(vec![heading]),
-        }
     }
+    drop_unclosed_trailing_fence(&lines[last_attempt_start(&headings)..])
+}
 
-    let is_complete = |set: &Vec<(usize, SummarySection)>| {
-        set.iter()
-            .any(|(_, section)| *section == SummarySection::Glance)
-            && set
-                .iter()
-                .any(|(_, section)| *section == SummarySection::KeyPoints)
-    };
-    let Some(chosen) = sets.iter().rposition(is_complete) else {
-        return &lines[first_heading..];
-    };
-    let start = sets[chosen][0].0;
-    let end = sets
-        .get(chosen + 1)
-        .map(|next_set| next_set[0].0)
-        .unwrap_or(lines.len());
-    let selected = &lines[start..end];
-    drop_unclosed_trailing_fence(selected)
+/// Line index where the last set of sections starts.
+///
+/// A new set starts when the glance or overview section repeats, or when a heading follows
+/// Takeaways, the last section of a set. Key Points can repeat on purpose, for example in a
+/// summary of a show with two segments.
+fn last_attempt_start(headings: &[(usize, SummarySection)]) -> usize {
+    let mut start = headings[0].0;
+    let mut sections_in_set: Vec<SummarySection> = Vec::new();
+    for &(at, section) in headings {
+        let section_repeats = matches!(section, SummarySection::Glance | SummarySection::Overview)
+            && sections_in_set.contains(&section);
+        let follows_last_section = sections_in_set.last() == Some(&SummarySection::Takeaways);
+        if section_repeats || follows_last_section {
+            start = at;
+            sections_in_set.clear();
+        }
+        sections_in_set.push(section);
+    }
+    start
 }
 
 /// A wrapping fence that started before the summary leaves a lone closing fence at the end.

@@ -55,9 +55,97 @@ fn clean_summary_output_keeps_the_last_complete_section_set() {
 }
 
 #[test]
-fn clean_summary_output_ignores_a_trailing_incomplete_restart() {
-    let raw = format!("{SUMMARY}\n\n## At a glance\n- A second start that stops");
+fn clean_summary_output_drops_notes_that_end_glued_to_the_final_heading() {
+    // Seen with glm-5.3: a full draft, then a note whose last word runs straight into the
+    // first heading of the final version.
+    let draft = "## At a glance\n- draft bullet\n\n## Overview\nDraft overview.\n\n## Key Points\n- draft point\n\n## Takeaways\n- draft takeaway";
+    let raw = format!("{draft}\n\nLet me write the final summary now.{SUMMARY}");
     assert_eq!(clean_summary_output(&raw), SUMMARY);
+}
+
+#[test]
+fn clean_summary_output_drops_an_empty_heading_outline_and_the_notes_after_it() {
+    // Seen with glm-5.3: the headings alone first, then notes, then the real summary.
+    let raw = format!(
+        "## At a glance\n## Overview\n## Key Points\n## Takeaways\n\nGood. The instructions say to group related points.\nLet me write it now.{SUMMARY}"
+    );
+    assert_eq!(clean_summary_output(&raw), SUMMARY);
+}
+
+#[test]
+fn clean_summary_output_keeps_only_the_last_attempt_when_none_is_complete() {
+    // An outline, notes, then an attempt that stops after the first section. Keeping only
+    // the last attempt lets the output check reject it.
+    let raw = "## Overview\n## Key Points\n## Takeaways\n\nLet me draft.\n\n## At a glance\n- The one bullet it managed.";
+    let cleaned = clean_summary_output(raw);
+    assert_eq!(cleaned, "## At a glance\n- The one bullet it managed.");
+    assert_eq!(
+        check_summary_output(&cleaned, SOURCE),
+        Err(SummaryOutputProblem::MissingKeyPoints)
+    );
+}
+
+#[test]
+fn clean_summary_output_keeps_a_heading_named_inside_a_sentence_in_place() {
+    let raw = format!("The host asks you to start with \"## At a glance\".\n\n{SUMMARY}");
+    assert_eq!(clean_summary_output(&raw), SUMMARY);
+}
+
+#[test]
+fn check_summary_output_rejects_leftover_model_notes() {
+    for note in [
+        "Let me write the final version.",
+        "I'll use ### sub-headings here.",
+        "Now write the final output.",
+        "The instructions say to group related points.",
+        "First, I need to count the bullets.",
+    ] {
+        let summary = SUMMARY.replace("## Overview", &format!("{note}\n\n## Overview"));
+        assert_eq!(
+            check_summary_output(&summary, SOURCE),
+            Err(SummaryOutputProblem::ContainsReasoning),
+            "note: {note}"
+        );
+    }
+}
+
+#[test]
+fn check_summary_output_keeps_summary_lines_that_start_like_notes() {
+    // Bullets and headings are summary content even when they read like model notes.
+    let quoted = SUMMARY.replace(
+        "- Blue-green wins for risky launches.",
+        "- Blue-green wins for risky launches, and the host adds: \"Let me show you why.\"",
+    );
+    assert_eq!(check_summary_output(&quoted, SOURCE), Ok(()));
+
+    let bullet = format!("{SUMMARY}\n- I'll deploy on Friday, the host jokes.");
+    assert_eq!(check_summary_output(&bullet, SOURCE), Ok(()));
+}
+
+#[test]
+fn clean_summary_output_keeps_a_trailing_restart_over_the_attempt_before_it() {
+    // The restart is the model's answer, so the earlier attempt is dropped even when it is
+    // the more complete one. The output check then rejects the restart and it is summarized
+    // again, instead of storing an attempt the model walked away from.
+    let raw = format!("{SUMMARY}\n\n## At a glance\n- A second start that stops");
+    let cleaned = clean_summary_output(&raw);
+    assert_eq!(cleaned, "## At a glance\n- A second start that stops");
+    assert_eq!(
+        check_summary_output(&cleaned, SOURCE),
+        Err(SummaryOutputProblem::MissingKeyPoints)
+    );
+}
+
+#[test]
+fn clean_summary_output_drops_notes_written_after_the_last_section() {
+    let raw = format!("{SUMMARY}\n\nThat's 7 bullets, good.\n\nLength looks right.");
+    assert_eq!(clean_summary_output(&raw), SUMMARY);
+}
+
+#[test]
+fn clean_summary_output_keeps_a_closing_paragraph_in_a_prose_section() {
+    let prose_last = "## At a glance\n- One.\n\n## Key Points\n- **A**: b.\n\n## Overview\nA short talk about rollout strategies.\n\nIt closes on a second paragraph of prose.";
+    assert_eq!(clean_summary_output(prose_last), prose_last);
 }
 
 #[test]

@@ -88,6 +88,8 @@ Language and output rules:
 - Use the section headings exactly as written below.
 - Do not write words in Chinese, Japanese, or any other non-Latin script, unless you quote a proper name or a non-English source term exactly as it appears in the transcript.
 - Output only the summary. Do not include your reasoning, notes, drafts, or any remarks before or after the summary.
+- Write the summary once. Do not write an outline or a draft first, and do not restart after writing it.
+- Start every section heading on its own line.
 
 Output format (exact section headings):
 ## At a glance

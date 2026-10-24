@@ -243,6 +243,8 @@ fn build_summary_prompt_states_language_and_output_rules() {
     assert!(prompt.contains("Use the section headings exactly as written below."));
     assert!(prompt.contains("Chinese, Japanese, or any other non-Latin script"));
     assert!(prompt.contains("Do not include your reasoning"));
+    assert!(prompt.contains("Write the summary once."));
+    assert!(prompt.contains("Start every section heading on its own line."));
 }
 
 #[test]
