@@ -4,6 +4,7 @@ use rss::extension::Extension;
 use rss::{Channel as RssChannel, Item};
 use scraper::Html;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -65,8 +66,31 @@ fn normalize_feed_id(url: &str) -> String {
     }
 }
 
+fn short_feed_url_fingerprint(feed_url: &str) -> String {
+    let digest = Sha256::digest(feed_url.as_bytes());
+    digest
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Stable catalog key for a podcast feed URL.
+///
+/// `normalize_feed_id` alone collapses distinct URLs (`show-feed` vs `show/feed`,
+/// `token=a-b` vs `token=a_b`, etc.) onto one id and lets later subscribe/sync
+/// overwrite shared channel and source-profile rows. Append a fingerprint of
+/// the exact feed URL.
+pub fn podcast_feed_identity(feed_url: &str) -> String {
+    format!(
+        "{}:{}",
+        normalize_feed_id(feed_url),
+        short_feed_url_fingerprint(feed_url)
+    )
+}
+
 pub fn podcast_source_id_for_feed_url(feed_url: &str) -> String {
-    format!("podcast:rss:{}", normalize_feed_id(feed_url))
+    format!("podcast:rss:{}", podcast_feed_identity(feed_url))
 }
 
 fn parse_rss_date(value: Option<&str>) -> Option<DateTime<Utc>> {
@@ -82,10 +106,11 @@ fn series_thumbnail(feed: &RssChannel) -> Option<String> {
 }
 
 fn build_podcast_resolved_source(feed_url: &str, feed: &RssChannel) -> ResolvedSourceDraft {
-    let source_id = podcast_source_id_for_feed_url(feed_url);
+    let feed_key = podcast_feed_identity(feed_url);
+    let source_id = format!("podcast:rss:{feed_key}");
     let title = feed.title().trim();
     let container = SubscriptionContainer {
-        id: format!("podcast:series:{}", normalize_feed_id(feed_url)),
+        id: format!("podcast:series:{feed_key}"),
         kind: SubscriptionContainerKind::Series,
         title: title.to_string(),
         provider: ProviderKind::PodcastRss,

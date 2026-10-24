@@ -1,7 +1,7 @@
 use super::{
     PodcastFeedService, build_podcast_resolved_source, build_podcast_sync_batch,
     caption_payload_to_text, item_transcript_references, json_transcript_to_text,
-    transcript_payload_to_text,
+    podcast_feed_identity, podcast_source_id_for_feed_url, transcript_payload_to_text,
 };
 use crate::models::{ContentItemKind, ContentSourceKind, MediaAssetKind, ProviderKind};
 
@@ -48,6 +48,36 @@ fn resolve_source_builds_podcast_series_contract() {
         resolved.source.thumbnail_url.as_deref(),
         Some("https://example.com/artwork.jpg")
     );
+    let feed_key = podcast_feed_identity("https://example.com/feed.xml");
+    assert_eq!(resolved.source.id, format!("podcast:rss:{feed_key}"));
+    assert_eq!(resolved.container.id, format!("podcast:series:{feed_key}"));
+    assert_eq!(resolved.source.container_id, resolved.container.id);
+}
+
+#[test]
+fn podcast_feed_identity_distinguishes_slug_collisions() {
+    let hyphen_path = podcast_feed_identity("https://podcasts.example.com/show-feed.xml");
+    let slash_path = podcast_feed_identity("https://podcasts.example.com/show/feed.xml");
+    let token_hyphen =
+        podcast_feed_identity("https://feeds.example.com/show.xml?token=a-b");
+    let token_underscore =
+        podcast_feed_identity("https://feeds.example.com/show.xml?token=a_b");
+
+    assert_ne!(hyphen_path, slash_path);
+    assert_ne!(token_hyphen, token_underscore);
+    assert!(hyphen_path.starts_with("https-podcasts-example-com-show-feed-xml:"));
+    assert!(slash_path.starts_with("https-podcasts-example-com-show-feed-xml:"));
+    assert_eq!(
+        podcast_source_id_for_feed_url("https://podcasts.example.com/show-feed.xml"),
+        format!("podcast:rss:{hyphen_path}")
+    );
+}
+
+#[test]
+fn podcast_feed_identity_is_stable_for_exact_url() {
+    let first = podcast_feed_identity("https://feeds.simplecast.com/6HKOhNgS");
+    let second = podcast_feed_identity("https://feeds.simplecast.com/6HKOhNgS");
+    assert_eq!(first, second);
 }
 
 #[test]

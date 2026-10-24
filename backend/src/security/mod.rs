@@ -442,13 +442,14 @@ async fn ensure_canonical_seeded_channel(state: &AppState, channel_id: &str) -> 
 }
 
 async fn ensure_seeded_podcast_channel(state: &AppState, channel_id: &str) -> Result<(), String> {
-    let feed_url = match channel_id {
-        "podcast:rss:https-feeds-simplecast-com-6hkohngs" => DEFAULT_HARD_FORK_FEED_URL,
-        _ => {
-            return Err(format!(
-                "seeded podcast `{channel_id}` is missing a known feed URL"
-            ));
-        }
+    let hard_fork_source_id =
+        crate::services::podcast_feed::podcast_source_id_for_feed_url(DEFAULT_HARD_FORK_FEED_URL);
+    let feed_url = if channel_id == hard_fork_source_id {
+        DEFAULT_HARD_FORK_FEED_URL
+    } else {
+        return Err(format!(
+            "seeded podcast `{channel_id}` is missing a known feed URL"
+        ));
     };
 
     let resolved = state
