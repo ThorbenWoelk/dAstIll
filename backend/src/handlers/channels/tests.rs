@@ -31,6 +31,8 @@ async fn test_app_state(db: crate::db::Store) -> AppState {
     let security =
         Arc::new(crate::config::SecurityRuntimeConfig::from_env().expect("security config"));
     AppState {
+        evaluation_work: Arc::new(crate::state::EvaluationWork::default()),
+        processing_role: crate::config::ProcessingRole::Combined,
         db,
         read_cache: Arc::new(crate::read_cache::ReadCache::default()),
         security: security.clone(),
@@ -84,6 +86,142 @@ async fn test_app_state(db: crate::db::Store) -> AppState {
         user_activity: Arc::new(UserActivity::from_env()),
         catch_up: None,
     }
+}
+
+#[tokio::test]
+async fn remote_waits_for_local_transcript_then_summarizes_and_evaluates() {
+    use crate::{config::ProcessingRole, db, handlers::content};
+    use axum::{
+        Json, Router,
+        routing::{get, post},
+    };
+    let store = Store::for_test().await;
+    let mut local = Store::for_test().await;
+    local.objects = store.objects.clone();
+    let video = Video {
+        id: "handoff-video".into(),
+        channel_id: "channel".into(),
+        title: "Batching results".into(),
+        thumbnail_url: None,
+        published_at: Utc::now(),
+        is_short: false,
+        transcript_status: ContentStatus::Pending,
+        summary_status: ContentStatus::Pending,
+        acknowledged: false,
+        retry_count: 0,
+        quality_score: None,
+    };
+    insert_video(&store, &video).await.unwrap();
+    let mut waiting_video = video.clone();
+    waiting_video.id = "newer-waiting-video".into();
+    waiting_video.published_at += chrono::Duration::seconds(1);
+    insert_video(&store, &waiting_video).await.unwrap();
+    let mut remote = test_app_state(store.clone()).await;
+    remote.processing_role = ProcessingRole::Remote;
+
+    // No model or YouTube endpoint is usable yet. Waiting must still be a clean 503.
+    let error = content::ensure_transcript(&remote, &video.id)
+        .await
+        .unwrap_err();
+    assert_eq!(error.0, axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    assert!(error.1.contains("local app"));
+    assert_eq!(
+        crate::workers::count_pending_queue_work(&remote, 4)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        db::get_video(&store, &video.id, false)
+            .await
+            .unwrap()
+            .unwrap()
+            .retry_count,
+        0
+    );
+
+    let request = db::pending_youtube_transcript_requests(&local)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|request| request.video_id == video.id)
+        .unwrap();
+    db::save_youtube_transcript_result(
+        &local,
+        &request,
+        &db::YoutubeTranscriptResult::Ready(Transcript {
+            video_id: video.id.clone(),
+            raw_text: Some("Batching reduced latency from 80 ms to 35 ms in staging.".into()),
+            formatted_markdown: None,
+            render_mode: TranscriptRenderMode::PlainText,
+            timed_text: None,
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(db::sql_video_count(&local).await.unwrap(), 0);
+    assert_eq!(
+        crate::workers::count_pending_queue_work(&remote, 4)
+            .await
+            .unwrap(),
+        1
+    );
+
+    let app = Router::new().route("/api/tags", get(|| async { Json(serde_json::json!({"models": []})) }))
+        .route("/api/generate", post(|Json(request): Json<Value>| async move {
+            assert!(request["prompt"].as_str().unwrap().contains("80 ms"));
+            let response = if request.get("format").is_some() {
+                serde_json::json!({"status":"scored", "faithfulness_score":10, "completeness_score":10, "final_score":10, "defects":[], "tags":["Batching"]}).to_string()
+            } else {
+                "## At a glance\n- Batching reduced latency.\n\n## Overview\nA staging result.\n\n## Key Points\nLatency fell from 80 ms to 35 ms.\n\n## Takeaways\nProduction behavior is untested.".into()
+            };
+            Json(serde_json::json!({"response":response,"done":true,"done_reason":"stop"}))
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async {
+        axum::serve(listener, app).await.unwrap();
+    });
+    remote.summarizer = Arc::new(SummarizerService::new(OllamaCore::new(
+        &url,
+        "summary:cloud",
+    )));
+    remote.summary_evaluator = Arc::new(SummaryEvaluatorService::new(OllamaCore::new(
+        &url,
+        "judge:cloud",
+    )));
+    let summary = content::ensure_summary_for_queue(&remote, &video.id)
+        .await
+        .unwrap();
+    assert!(summary.content.contains("35 ms"));
+    let job = db::load_summary_evaluation_job(&store, &video.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let evaluation = remote
+        .summary_evaluator
+        .evaluate(&job.transcript_text, &job.summary_content, &job.video_title)
+        .await
+        .unwrap();
+    assert_eq!(evaluation.quality_score, Some(10));
+    assert!(
+        db::get_transcript(&store, &video.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let waiting = db::requested_youtube_video_ids(&store).await.unwrap();
+    assert!(!waiting.contains(&video.id));
+    assert!(waiting.contains(&waiting_video.id));
+    assert_eq!(
+        db::get_video(&store, &video.id, false)
+            .await
+            .unwrap()
+            .unwrap()
+            .summary_status,
+        ContentStatus::Ready
+    );
+    server.abort();
 }
 
 #[tokio::test]

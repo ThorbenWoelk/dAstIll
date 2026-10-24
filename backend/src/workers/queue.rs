@@ -35,13 +35,58 @@ pub(crate) async fn count_pending_queue_work(
     state: &AppState,
     limit: usize,
 ) -> Result<usize, db::StoreError> {
-    let conn = state.db.connect();
-    let videos =
-        db::list_videos_for_queue_processing(&conn, limit, MAX_DISTILLATION_RETRIES).await?;
+    let videos = queue_candidates(state, limit).await?;
     Ok(videos
         .iter()
         .filter(|video| next_queue_task(video) != QueueTask::Skip)
         .count())
+}
+
+async fn queue_candidates(state: &AppState, limit: usize) -> Result<Vec<Video>, db::StoreError> {
+    if state.processing_role != crate::config::ProcessingRole::Remote {
+        return db::list_videos_for_queue_processing(&state.db, limit, MAX_DISTILLATION_RETRIES)
+            .await;
+    }
+    let candidates =
+        db::list_videos_for_queue_processing(&state.db, usize::MAX, MAX_DISTILLATION_RETRIES)
+            .await?;
+    if candidates
+        .iter()
+        .all(|video| next_queue_task(video) != QueueTask::Transcript)
+    {
+        return Ok(candidates.into_iter().take(limit).collect());
+    }
+    let requested = db::requested_youtube_video_ids(&state.db).await?;
+    let completed = db::completed_youtube_video_ids(&state.db).await?;
+    let transcripts: std::collections::HashSet<String> = state
+        .db
+        .list_keys("transcripts/")
+        .await?
+        .into_iter()
+        .filter_map(|key| {
+            key.strip_prefix("transcripts/")?
+                .strip_suffix(".json")
+                .map(str::to_owned)
+        })
+        .collect();
+    let mut ready = Vec::new();
+    for video in candidates {
+        let needs_local_fetch =
+            next_queue_task(&video) == QueueTask::Transcript && !video.id.starts_with("podcast:");
+        if needs_local_fetch {
+            if requested.contains(&video.id) {
+                if !completed.contains(&video.id) {
+                    continue;
+                }
+            } else if !transcripts.contains(&video.id) {
+                db::request_youtube_transcript(&state.db, &video.id).await?;
+                continue;
+            }
+        }
+        ready.push(video);
+    }
+    ready.truncate(limit);
+    Ok(ready)
 }
 
 pub fn spawn_queue_worker(state: AppState) {
@@ -86,12 +131,7 @@ pub fn spawn_queue_worker(state: AppState) {
                 }
 
                 let queue = {
-                    let conn = state.db.connect();
-                    db::list_videos_for_queue_processing(
-                        &conn,
-                        QUEUE_SCAN_LIMIT,
-                        MAX_DISTILLATION_RETRIES,
-                    )
+                    queue_candidates(&state, QUEUE_SCAN_LIMIT)
                     .await
                     .map_err(|err| err.to_string())
                 };

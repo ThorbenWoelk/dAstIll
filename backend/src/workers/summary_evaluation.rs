@@ -387,12 +387,16 @@ pub fn spawn_summary_evaluation_worker(state: AppState) {
                 }
 
                 let conn = state.db.connect();
+                if state.evaluation_work.take_change() {
+                    pending.last_full_scan = None;
+                }
                 if let Err(err) = refresh_pending_evaluations(&conn, &mut pending).await {
                     tracing::error!(error = %err, "summary evaluation worker failed to load queue");
                     sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
                     continue;
                 }
 
+                state.evaluation_work.report_pending(!pending.is_empty());
                 if pending.is_empty() {
                     sleep_with_backoff(SUMMARY_EVAL_POLL_BACKOFF, &mut backoff_state, false).await;
                     continue;

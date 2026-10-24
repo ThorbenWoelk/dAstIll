@@ -1,5 +1,8 @@
 use std::env;
 
+mod processing;
+pub use processing::ProcessingRole;
+
 use crate::services::SummaryEvaluatorService;
 
 fn default_seeded_channel_ids() -> Vec<String> {

@@ -102,9 +102,12 @@ pub async fn run_catch_up(
 }
 
 async fn count_pending(state: &AppState) -> Result<usize, (StatusCode, String)> {
-    workers::count_pending_queue_work(state, PENDING_COUNT_LIMIT)
+    let content = workers::count_pending_queue_work(state, PENDING_COUNT_LIMIT)
         .await
-        .map_err(super::map_db_err)
+        .map_err(super::map_db_err)?;
+    // Keep CPU available until the evaluator has had a chance to score newly written articles.
+    let evaluations = usize::from(state.evaluation_work.has_pending());
+    Ok(content + evaluations)
 }
 
 #[cfg(test)]

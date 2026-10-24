@@ -21,7 +21,7 @@ fn normalize_vocabulary_entry(value: &str) -> Option<&str> {
 ///
 /// The summarizer sees this text. Give the summary evaluator the same text so both judge
 /// the same wording.
-pub(crate) fn normalize_transcript_vocabulary(
+pub fn normalize_transcript_vocabulary(
     transcript: &str,
     replacements: &[VocabularyReplacement],
 ) -> String {

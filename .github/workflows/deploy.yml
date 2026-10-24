@@ -319,6 +319,7 @@ jobs:
           }
 
           add_env_var GCS_DATA_BUCKET "${APP_NAME}-data-${REGION}"
+          add_env_var PROCESSING_ROLE "remote"
           add_env_var DEFAULT_SEEDED_CHANNEL_IDS "UCbRP3c757lWg9M-U7TyEkXA,podcast:rss:https-feeds-simplecast-com-6hkohngs"
           add_env_var SEARCH_SEMANTIC_ENABLED "false"
           add_env_var SEARCH_AUTO_CREATE_VECTOR_INDEX "false"

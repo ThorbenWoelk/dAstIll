@@ -6,6 +6,7 @@ use crate::config::{
 };
 
 pub(super) struct RuntimeConfig {
+    pub(super) processing_role: crate::config::ProcessingRole,
     pub(super) search: SearchRuntimeConfig,
     pub(super) chat: ChatRuntimeConfig,
     pub(super) databricks: Option<DatabricksRuntimeConfig>,
@@ -67,6 +68,7 @@ pub(super) fn load_runtime_config() -> anyhow::Result<RuntimeConfig> {
     };
 
     Ok(RuntimeConfig {
+        processing_role: crate::config::ProcessingRole::from_env().map_err(anyhow::Error::msg)?,
         search,
         chat,
         databricks,

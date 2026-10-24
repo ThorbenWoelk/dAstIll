@@ -124,26 +124,6 @@ fn timed_segment_count(transcript: &Transcript) -> usize {
     transcript.timed_text.as_ref().map_or(0, Vec::len)
 }
 
-async fn defer_transcript_processing(
-    state: &AppState,
-    video_id: &str,
-    message: &str,
-) -> (StatusCode, String) {
-    if let Err(err) =
-        db::update_video_transcript_status(&state.db, video_id, ContentStatus::Pending).await
-    {
-        tracing::error!(
-            video_id = %video_id,
-            error = %err,
-            "failed to persist deferred transcript status"
-        );
-    } else {
-        evict_video_scope_cache_by_video_id(state, video_id).await;
-    }
-    state.transcript_cooldown.activate();
-    (StatusCode::TOO_MANY_REQUESTS, message.to_string())
-}
-
 async fn valid_cached_transcript(
     state: &AppState,
     video_id: &str,
@@ -274,6 +254,7 @@ async fn save_manual_summary_content(
     let summary = db::save_manual_summary(&state.db, video_id, content, Some("manual"))
         .await
         .map_err(map_db_err)?;
+    state.evaluation_work.summary_changed();
     sync_search_source(
         state,
         video_id,
@@ -475,15 +456,109 @@ pub(crate) async fn ensure_transcript(
 ) -> Result<Transcript, (StatusCode, String)> {
     let video = require_video(state, video_id).await?;
     if let Some(transcript) = valid_cached_transcript(state, video_id).await? {
-        let _ = db::update_video_transcript_status(&state.db, video_id, ContentStatus::Ready).await;
-        tracing::debug!(video_id = %video_id, "transcript cache hit");
+        if state.processing_role != crate::config::ProcessingRole::LocalFetcher
+            && video.transcript_status != ContentStatus::Ready
+        {
+            return store_completed_transcript(state, video_id, transcript).await;
+        }
         return Ok(transcript);
     }
-
+    if state.processing_role == crate::config::ProcessingRole::LocalFetcher {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Transcript processing is requested by the hosted app".into(),
+        ));
+    }
     if is_podcast_video(state, &video).await? {
         return ensure_podcast_audio_transcript(state, &video).await;
     }
+    let result = if state.processing_role == crate::config::ProcessingRole::Remote {
+        shared_youtube_transcript(state, video_id).await
+    } else {
+        db::update_video_transcript_status(&state.db, video_id, ContentStatus::Loading)
+            .await
+            .map_err(map_db_err)?;
+        download_youtube_transcript(state, video_id).await
+    };
+    match result {
+        Ok(transcript) => {
+            let transcript = store_completed_transcript(state, video_id, transcript).await?;
+            db::cancel_youtube_transcript_request(&state.db, video_id)
+                .await
+                .map_err(map_db_err)?;
+            Ok(transcript)
+        }
+        Err((status, message)) => {
+            let next = if status == StatusCode::SERVICE_UNAVAILABLE
+                || status == StatusCode::TOO_MANY_REQUESTS
+            {
+                ContentStatus::Pending
+            } else {
+                ContentStatus::Failed
+            };
+            db::update_video_transcript_status(&state.db, video_id, next)
+                .await
+                .map_err(map_db_err)?;
+            evict_video_scope_cache_by_video_id(state, video_id).await;
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                state.transcript_cooldown.activate();
+            }
+            Err((status, message))
+        }
+    }
+}
 
+async fn shared_youtube_transcript(
+    state: &AppState,
+    video_id: &str,
+) -> Result<Transcript, (StatusCode, String)> {
+    let request = db::request_youtube_transcript(&state.db, video_id)
+        .await
+        .map_err(map_db_err)?;
+    match db::youtube_transcript_result(&state.db, &request)
+        .await
+        .map_err(map_db_err)?
+    {
+        Some(db::YoutubeTranscriptResult::Ready(transcript))
+            if transcript.video_id == video_id && is_valid_cached_transcript(&transcript) =>
+        {
+            Ok(transcript)
+        }
+        Some(db::YoutubeTranscriptResult::Ready(_)) => {
+            db::cancel_youtube_transcript_request(&state.db, video_id)
+                .await
+                .map_err(map_db_err)?;
+            Err((
+                StatusCode::BAD_GATEWAY,
+                "Local transcript result is invalid".into(),
+            ))
+        }
+        Some(db::YoutubeTranscriptResult::Failed { status, message }) => {
+            db::cancel_youtube_transcript_request(&state.db, video_id)
+                .await
+                .map_err(map_db_err)?;
+            Err((
+                StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                message,
+            ))
+        }
+        _ => Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Waiting for the local app to fetch the YouTube transcript".into(),
+        )),
+    }
+}
+
+pub(crate) async fn download_youtube_transcript(
+    state: &AppState,
+    video_id: &str,
+) -> Result<Transcript, (StatusCode, String)> {
+    if state.processing_role == crate::config::ProcessingRole::Remote {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "YouTube transcripts are fetched by the local app".into(),
+        ));
+    }
     let completed_live = match state
         .youtube
         .fetch_completed_live_transcript_metadata(video_id)
@@ -493,16 +568,12 @@ pub(crate) async fn ensure_transcript(
         Err(crate::services::youtube::YouTubeError::NonCompletedLiveStream {
             state: live_state,
         }) => {
-            return Err(
-                defer_transcript_processing(
-                    state,
-                    video_id,
-                    &format!(
-                        "YouTube live stream is not finished yet ({live_state}); transcript will be retried later"
-                    ),
-                )
-                .await,
-            );
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                format!(
+                    "YouTube live stream is not finished yet ({live_state}); transcript will be retried later"
+                ),
+            ));
         }
         Err(err) => {
             tracing::warn!(
@@ -516,28 +587,18 @@ pub(crate) async fn ensure_transcript(
 
     if let Some(metadata) = completed_live.as_ref() {
         if !completed_live_transcript_grace_elapsed(metadata.actual_end, chrono::Utc::now()) {
-            return Err(defer_transcript_processing(
-                state,
-                video_id,
-                "Completed livestream transcript is not ready yet; retry later",
-            )
-            .await);
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                "Completed livestream transcript is not ready yet; retry later".into(),
+            ));
         }
-    }
-
-    {
-        db::update_video_transcript_status(&state.db, video_id, ContentStatus::Loading)
-            .await
-            .map_err(map_db_err)?;
-        evict_video_scope_cache_by_video_id(state, video_id).await;
-        tracing::info!(video_id = %video_id, "transcript queued - status set to loading");
     }
 
     tracing::info!(video_id = %video_id, "starting transcript download");
     let (raw, formatted, timed) = match state.transcript.extract(video_id).await {
         Ok(result) => result,
         Err(err) => {
-            return Err(apply_transcript_error(state, video_id, err).await);
+            return Err((transcript_error_statuses(&err).0, err.to_string()));
         }
     };
     tracing::info!(
@@ -567,12 +628,11 @@ pub(crate) async fn ensure_transcript(
                     duration_seconds = metadata.duration_seconds.unwrap_or_default(),
                     "completed livestream transcript looks like the YouTube description; deferring retry"
                 );
-                return Err(defer_transcript_processing(
-                    state,
-                    video_id,
-                    "Completed livestream transcript looks like the video description; retry later",
-                )
-                .await);
+                return Err((
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "Completed livestream transcript looks like the video description; retry later"
+                        .into(),
+                ));
             }
         }
     }
@@ -597,12 +657,10 @@ pub(crate) async fn ensure_transcript(
             transcript_words = candidate_text.split_whitespace().count(),
             "transcript is only the video description; marking the video as having no transcript"
         );
-        return Err(apply_transcript_error(
-            state,
-            video_id,
-            crate::services::transcript::TranscriptError::NoTranscript,
-        )
-        .await);
+        return Err((
+            StatusCode::NOT_FOUND,
+            "Video has no transcript available".into(),
+        ));
     }
 
     let transcript = Transcript {
@@ -613,6 +671,20 @@ pub(crate) async fn ensure_transcript(
         timed_text: if timed.is_empty() { None } else { Some(timed) },
     };
 
+    if !is_valid_cached_transcript(&transcript) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "Video has no usable transcript".into(),
+        ));
+    }
+    Ok(transcript)
+}
+
+async fn store_completed_transcript(
+    state: &AppState,
+    video_id: &str,
+    transcript: Transcript,
+) -> Result<Transcript, (StatusCode, String)> {
     db::upsert_transcript(&state.db, &transcript)
         .await
         .map_err(map_db_err)?;
@@ -627,7 +699,7 @@ pub(crate) async fn ensure_transcript(
     )
     .await
     .map_err(map_db_err)?;
-    evict_video_scope_cache(state, &video.channel_id).await?;
+    evict_video_scope_cache(state, &require_video(state, video_id).await?.channel_id).await?;
     tracing::info!(video_id = %video_id, "transcript stored - status set to ready");
 
     Ok(transcript)
@@ -673,6 +745,12 @@ async fn ensure_summary_internal(
     video_id: &str,
     stored_summary_use: StoredSummaryUse,
 ) -> Result<Summary, (StatusCode, String)> {
+    if state.processing_role == crate::config::ProcessingRole::LocalFetcher {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Summaries are generated by the hosted app".into(),
+        ));
+    }
     let video = require_video(state, video_id).await?;
     {
         let stored_summary = if stored_summary_use == StoredSummaryUse::Replace {
@@ -813,6 +891,7 @@ async fn ensure_summary_internal(
     db::upsert_summary(&state.db, &summary)
         .await
         .map_err(map_db_err)?;
+    state.evaluation_work.summary_changed();
     db::update_video_summary_status(&state.db, video_id, ContentStatus::Ready)
         .await
         .map_err(map_db_err)?;

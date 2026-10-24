@@ -116,7 +116,9 @@ Handlers read `AppState` for shared services and `AccessContext` for caller-spec
 
 ## Parallel Worker Loops
 
-The backend starts five worker loops in parallel.
+The hosted backend (`PROCESSING_ROLE=remote`) starts five worker loops in parallel.
+The local app (`PROCESSING_ROLE=local-fetcher`) runs only the YouTube transcript fetcher.
+Standalone development can use `PROCESSING_ROLE=combined` to run the original pipeline.
 
 | Worker                    | Runtime role                                            |
 | ------------------------- | ------------------------------------------------------- |
@@ -126,7 +128,7 @@ The backend starts five worker loops in parallel.
 | Summary evaluation worker | scores summaries and can queue low-quality regeneration |
 | Search index worker       | backfills, indexes, reconciles, prunes, and syncs FTS   |
 
-All five loops skip scheduled work when there is no recent active user. Model and external-service
+All five hosted loops skip scheduled work when there is no recent active user. Model and external-service
 failures can also activate a cooldown for the affected path.
 
 Cloud Run also gives the backend CPU only while a request is in flight. So that new videos arrive
@@ -147,6 +149,28 @@ The search index worker also:
 ```
 
 ## Concurrency Controls
+
+### YouTube Transcript Handoff
+
+The hosted queue writes missing transcript requests to `youtube-transcript-requests/` in GCS.
+It does not run YouTube caption extraction. The local worker checks these requests every minute,
+downloads at most four per round, and writes results under `youtube-transcript-results/`.
+It runs whenever the local backend is running, without browser activity.
+
+The hosted process imports completed transcripts into its own video state and search index,
+then generates and evaluates the articles. Catch-up keeps CPU available for pending evaluations
+as well as generation. Requests waiting on the local machine do not consume failure retries or
+block other ready jobs. If the hosted service is idle, completed results wait until a reader
+request or the next scheduled catch-up (every four hours).
+
+Each request has a unique identity. Resetting or deleting a video cancels its request; late results
+from a previous request cannot replace a new one. Temporary fetch failures store a 15-minute retry
+deadline in `youtube-transcript-retries/`, which survives local restarts.
+
+The local fetcher reads GCS job objects directly, so its SQL cache can be older than the hosted
+cache without losing jobs. It does not publish SQL snapshots or update hosted video metadata.
+The hosted process owns status changes and snapshot publication. Podcast transcription, channel
+discovery, summarization, evaluation, and indexing remain on the hosted backend.
 
 <MermaidDiagram
   caption="Concurrency boundaries: workers share AppState, search projection changes coordinate through a read/write lock, and model-heavy paths are rate-limited separately."

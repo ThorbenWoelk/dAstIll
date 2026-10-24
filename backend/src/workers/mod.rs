@@ -472,6 +472,10 @@ pub async fn spawn_fts_hydration_if_empty(state: AppState, fts_dir: &std::path::
 }
 
 pub async fn spawn_runtime_workers(state: AppState, fts_dir: PathBuf) {
+    if state.processing_role == crate::config::ProcessingRole::LocalFetcher {
+        youtube_fetch::spawn_youtube_fetch_worker(state);
+        return;
+    }
     spawn_search_progress_hydration(state.clone());
     spawn_fts_hydration_if_empty(state.clone(), &fts_dir).await;
     spawn_queue_worker(state.clone());
@@ -520,6 +524,7 @@ mod queue;
 mod refresh;
 mod search_index;
 mod summary_evaluation;
+mod youtube_fetch;
 
 pub use gap_scan::spawn_gap_scan_worker;
 pub(crate) use queue::count_pending_queue_work;

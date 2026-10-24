@@ -2,6 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+mod evaluation_work;
+pub use evaluation_work::EvaluationWork;
+
 use tokio::sync::{Mutex, RwLock};
 
 use crate::config::{CatchUpRuntimeConfig, SecurityRuntimeConfig};
@@ -44,6 +47,8 @@ pub struct MobileAuthHandoff {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub evaluation_work: Arc<EvaluationWork>,
+    pub processing_role: crate::config::ProcessingRole,
     pub db: Store,
     pub read_cache: Arc<ReadCache>,
     pub security: Arc<SecurityRuntimeConfig>,

@@ -432,6 +432,7 @@ pub async fn delete_summary(store: &Store, video_id: &str) -> Result<bool, Store
 }
 
 pub async fn delete_transcript(store: &Store, video_id: &str) -> Result<bool, StoreError> {
+    super::cancel_youtube_transcript_request(store, video_id).await?;
     super::search::clear_search_source(store, video_id, SearchSourceKind::Transcript).await?;
     let key = transcript_key(video_id);
     let exists = store.key_exists(&key).await?;

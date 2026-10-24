@@ -173,6 +173,8 @@ async fn test_app_state() -> AppState {
     let security =
         Arc::new(crate::config::SecurityRuntimeConfig::from_env().expect("security config"));
     AppState {
+        evaluation_work: Arc::new(crate::state::EvaluationWork::default()),
+        processing_role: crate::config::ProcessingRole::Combined,
         db,
         read_cache: Arc::new(crate::read_cache::ReadCache::default()),
         security: security.clone(),

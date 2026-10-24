@@ -58,6 +58,13 @@ Detached startup writes supervisor output to `start_app.log` and service logs to
 
 ### Mac launcher
 
+The shared backend env uses `PROCESSING_ROLE=local-fetcher`. Run `./scripts/link_shared_env.sh`
+to add this setting to an older local config. The running backend fetches YouTube transcripts
+requested through the shared GCS bucket even when no browser is open. Hosted Cloud Run uses
+`PROCESSING_ROLE=remote` and generates/evaluates the articles. Set `combined` explicitly only
+for a standalone development instance. Existing articles remain available while the Mac is offline;
+new YouTube requests wait for it to return.
+
 On a Mac with Xcode command line tools, install the local control app from the repo root:
 
 ```bash

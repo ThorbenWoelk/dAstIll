@@ -42,6 +42,7 @@ pub async fn initialize_local_libsql(
 pub async fn initialize_local_libsql_store(
     objects: Arc<dyn ObjectStore>,
     port: u16,
+    publish_snapshots: bool,
 ) -> anyhow::Result<LocalLibsqlStore> {
     let fts_dir = local_libsql_dir(&std::env::temp_dir(), port);
     std::fs::create_dir_all(&fts_dir)?;
@@ -85,26 +86,43 @@ pub async fn initialize_local_libsql_store(
         }
     }
 
-    let source_generation_tracker = LibsqlSourceGenerationTracker::new(objects.clone())
-        .await
-        .map_err(|err| anyhow::anyhow!(err))?;
-    let snapshot_publisher =
-        LibsqlSnapshotPublisher::new(objects.clone(), snapshot_conn.clone(), db_path.clone());
+    let source_generation_tracker = if publish_snapshots {
+        Some(
+            LibsqlSourceGenerationTracker::new(objects.clone())
+                .await
+                .map_err(|err| anyhow::anyhow!(err))?,
+        )
+    } else {
+        None
+    };
+    let snapshot_publisher = publish_snapshots.then(|| {
+        LibsqlSnapshotPublisher::new(objects.clone(), snapshot_conn.clone(), db_path.clone())
+    });
 
     let read_cache = ReadCache::default();
     let store = init_store(
         objects.clone(),
         conn,
         read_cache.clone(),
-        Some(source_generation_tracker),
-        Some(snapshot_publisher),
+        source_generation_tracker,
+        snapshot_publisher,
     )
     .await
     .map_err(|err| anyhow::anyhow!(err))?;
 
-    let cache_reconcile = reconcile_sql_cache_with_store(&store)
-        .await
-        .map_err(|err| anyhow::anyhow!("failed to reconcile SQL cache from object store: {err}"))?;
+    let cache_reconcile = if publish_snapshots {
+        reconcile_sql_cache_with_store(&store)
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!("failed to reconcile SQL cache from object store: {err}")
+            })?
+    } else {
+        // The local fetcher may restore metadata for its UI, but never exports its stale cache.
+        if super::sql_video_count(&store).await? == 0 {
+            super::bootstrap_sql_videos_from_store(&store).await?;
+        }
+        super::SqlCacheReconcileReport::default()
+    };
     tracing::info!(
         bootstrapped_videos = cache_reconcile.bootstrapped_videos,
         exported_videos = cache_reconcile.exported_videos,
@@ -124,7 +142,11 @@ pub async fn initialize_local_libsql_store(
         || cache_reconcile.bootstrapped_tts_stats
         || cache_reconcile.exported_tts_stats;
 
-    if !snapshot_restore.restored() || cache_reconcile_changed || replayed_delta_generations > 0 {
+    if publish_snapshots
+        && (!snapshot_restore.restored()
+            || cache_reconcile_changed
+            || replayed_delta_generations > 0)
+    {
         if let Err(err) = publish_libsql_snapshot(
             objects.as_ref(),
             &snapshot_conn,

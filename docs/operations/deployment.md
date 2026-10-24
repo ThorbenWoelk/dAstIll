@@ -112,6 +112,7 @@ build-time env values.
 
 Backend runtime config includes:
 
+- `PROCESSING_ROLE=remote`: request YouTube transcripts from the local fetcher; generate and evaluate on Cloud Run
 - GCS data bucket name
 - search, model, and chat guardrail values
 - ingestion values
@@ -174,6 +175,11 @@ the scale-out boundary live in [Runtime Limits](/operations/runtime-limits#deplo
 
 On startup, the backend restores or rebuilds its local libSQL file from GCS-backed runtime cache
 objects.
+
+GCS is the durable source for video metadata, transcripts, and summaries; the local libSQL file is
+a cache/index. No Turso service or memory-only database is required. Keep the bucket on regional
+Standard storage for active objects. The local fetcher uses the same bucket and does not publish
+its SQL cache back over the hosted snapshot. See [Runtime Topology](/architecture/runtime-topology#youtube-transcript-handoff).
 
 ## Podcast ASR
 

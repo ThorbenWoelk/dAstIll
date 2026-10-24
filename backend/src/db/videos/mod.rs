@@ -643,6 +643,9 @@ pub async fn heal_queue_videos(store: &Store, max_retries: u8) -> Result<usize, 
 }
 
 pub async fn delete_videos(store: &Store, video_ids: &[String]) -> Result<(), StoreError> {
+    for video_id in video_ids {
+        super::cancel_youtube_transcript_request(store, video_id).await?;
+    }
     super::sql_videos::sql_delete_videos(store, video_ids).await?;
     store.read_cache.evict_videos().await;
     Ok(())

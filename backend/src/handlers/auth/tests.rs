@@ -84,6 +84,8 @@ async fn test_app_state() -> AppState {
     ));
 
     AppState {
+        evaluation_work: Arc::new(crate::state::EvaluationWork::default()),
+        processing_role: crate::config::ProcessingRole::Combined,
         db: store,
         read_cache: Arc::new(ReadCache::default()),
         security: security.clone(),

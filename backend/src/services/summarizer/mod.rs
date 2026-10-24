@@ -29,7 +29,7 @@ use transcript_size::{count_transcript_words, local_context_tokens, summary_time
 #[allow(unused_imports)]
 pub(crate) use vocabulary::normalize_transcript_vocabulary;
 // Older name of the same function, kept for existing callers.
-pub(crate) use vocabulary::normalize_transcript_vocabulary as apply_vocabulary_replacements;
+pub use vocabulary::normalize_transcript_vocabulary as apply_vocabulary_replacements;
 
 pub(crate) fn transcript_text_equivalent(input: &str, output: &str) -> bool {
     let expected = input

@@ -174,6 +174,17 @@ when the row is stuck in `loading` or marked `failed`.
 
 ### Manual Regeneration
 
+For a reviewed batch repair, `cargo run --bin regenerate_articles -- input.json output-directory`
+prepares replacements locally using the configured summarizer and evaluator. Input is an array of
+objects containing `video_id`, `title`, and `transcript` (the stored transcript object). Optional
+`refetch_captions: true` fetches actual YouTube captions locally first; optional
+`vocabulary_replacements` applies the normal spelling rules. Only replacements scoring at least
+7 are saved. Existing output files are skipped when resuming.
+
+This command does not write to shared storage. Review its output, back up the current objects,
+and publish with GCS generation preconditions so concurrent edits are not overwritten. A missing
+transcript or failed generation/evaluation leaves the stored article untouched.
+
 Regenerating a summary (`POST /api/videos/{id}/summary/regenerate`) generates the new summary
 first. The stored summary is replaced only when generation succeeds, and search is updated for the
 new text. If generation fails, the old summary stays and the video stays `ready`.

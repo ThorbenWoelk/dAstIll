@@ -630,7 +630,7 @@ impl TranscriptService {
                 video_id = %video_id,
                 "summarize returned empty output - trying yt-dlp fallback"
             );
-            return self.extract_with_ytdlp(video_id).await;
+            return self.extract_youtube_captions(video_id).await;
         }
 
         if is_site_wide_placeholder_description(&raw_auto) {
@@ -638,7 +638,7 @@ impl TranscriptService {
                 video_id = %video_id,
                 "summarize returned YouTube site-wide blurb - trying yt-dlp fallback"
             );
-            return self.extract_with_ytdlp(video_id).await;
+            return self.extract_youtube_captions(video_id).await;
         }
 
         // `--youtube auto` can sometimes return only a tiny snippet even when captions exist.
@@ -661,7 +661,7 @@ impl TranscriptService {
                         video_id = %video_id,
                         "summarize youtube=web retry returned empty/placeholder - trying yt-dlp fallback"
                     );
-                    return self.extract_with_ytdlp(video_id).await;
+                    return self.extract_youtube_captions(video_id).await;
                 }
 
                 tracing::info!(
@@ -690,7 +690,7 @@ impl TranscriptService {
                     video_id = %video_id,
                     "summarize web retry still looks truncated - trying yt-dlp fallback"
                 );
-                return self.extract_with_ytdlp(video_id).await;
+                return self.extract_youtube_captions(video_id).await;
             }
 
             let formatted = raw_web.clone();
@@ -824,7 +824,7 @@ impl TranscriptService {
     /// Called when `summarize` exits 0 with empty output (GCP IP blocking).
     /// Uses `--extractor-args youtube:player_client=ios` to hit YouTube's mobile API,
     /// which uses different endpoints and is less likely to be blocked on cloud IPs.
-    async fn extract_with_ytdlp(
+    pub async fn extract_youtube_captions(
         &self,
         video_id: &str,
     ) -> Result<(String, String, Vec<crate::models::TimedSegment>), TranscriptError> {

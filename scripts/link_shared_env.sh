@@ -56,3 +56,8 @@ link_env_file() {
 
 link_env_file "backend/.env" "backend.env" "backend/.env.example"
 link_env_file "frontend/.env" "frontend.env" "frontend/.env.example"
+
+# Upgrade existing local config without overwriting an explicit standalone/remote choice.
+if ! grep -Eq '^PROCESSING_ROLE=' "${shared_env_dir}/backend.env"; then
+	printf '\nPROCESSING_ROLE=local-fetcher\n' >> "${shared_env_dir}/backend.env"
+fi

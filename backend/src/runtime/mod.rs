@@ -39,7 +39,12 @@ pub async fn build_runtime(port: u16) -> anyhow::Result<Runtime> {
             .await?,
         ),
     };
-    let local_libsql = crate::db::initialize_local_libsql_store(objects, port).await?;
+    let local_libsql = crate::db::initialize_local_libsql_store(
+        objects,
+        port,
+        config.processing_role != crate::config::ProcessingRole::LocalFetcher,
+    )
+    .await?;
     let store = local_libsql.store;
     let read_cache = local_libsql.read_cache;
     let fts_dir = local_libsql.fts_dir;
@@ -169,6 +174,8 @@ pub async fn build_runtime(port: u16) -> anyhow::Result<Runtime> {
     let user_activity = Arc::new(UserActivity::from_env());
     let security = config.security.clone();
     let state = AppState {
+        evaluation_work: Arc::new(crate::state::EvaluationWork::default()),
+        processing_role: config.processing_role,
         db: store.clone(),
         read_cache: Arc::new(read_cache),
         security: security.clone(),
