@@ -1,8 +1,13 @@
+use std::collections::HashMap;
+
 use chrono::Utc;
 
 use crate::db::{self, SourceProfileRecord, StoreError};
 use crate::models::{
     Channel, ContentSource, ContentStatus, TranscriptRenderMode, Video, VideoInfo,
+};
+use crate::services::podcast_feed::{
+    podcast_episode_legacy_item_id, podcast_episode_legacy_part_id,
 };
 use crate::state::AppState;
 
@@ -69,6 +74,62 @@ fn podcast_video(source: &ContentSource, material: &PodcastEpisodeMaterial) -> V
         retry_count: 0,
         quality_score: None,
     }
+}
+
+fn podcast_material_external_id(material: &PodcastEpisodeMaterial) -> Option<&str> {
+    material
+        .item
+        .external_ids
+        .first()
+        .map(|identity| identity.external_id.as_str())
+}
+
+/// Prefer a same-channel legacy unscoped episode id when the normalized guid is
+/// unique in this sync batch, so deploy does not duplicate existing rows.
+///
+/// When multiple distinct guids collapse to the same legacy id, keep the
+/// fingerprinted ids so sync no longer overwrites one episode with another.
+async fn stabilize_podcast_episode_ids(
+    store: &db::Store,
+    source: &ContentSource,
+    materials: &mut [PodcastEpisodeMaterial],
+) -> Result<(), StoreError> {
+    let mut legacy_counts: HashMap<String, usize> = HashMap::new();
+    for material in materials.iter() {
+        let Some(external_id) = podcast_material_external_id(material) else {
+            continue;
+        };
+        let legacy_id = podcast_episode_legacy_item_id(external_id);
+        *legacy_counts.entry(legacy_id).or_default() += 1;
+    }
+
+    for material in materials.iter_mut() {
+        let Some(external_id) = podcast_material_external_id(material).map(str::to_owned) else {
+            continue;
+        };
+        let legacy_id = podcast_episode_legacy_item_id(&external_id);
+        if legacy_counts.get(&legacy_id).copied().unwrap_or(0) != 1 {
+            continue;
+        }
+        if legacy_id == material.item.id {
+            continue;
+        }
+
+        let Some(existing) = db::get_video(store, &legacy_id, false).await? else {
+            continue;
+        };
+        if existing.channel_id != source.id {
+            continue;
+        }
+
+        material.item.id = legacy_id.clone();
+        if let Some(asset) = material.audio_asset.as_mut() {
+            asset.item_id = legacy_id;
+            asset.id = podcast_episode_legacy_part_id("audio", &external_id);
+        }
+    }
+
+    Ok(())
 }
 
 fn website_video(material: &crate::services::website::WebsitePageMaterial) -> Video {
@@ -203,9 +264,12 @@ pub async fn sync_source_profile(
             Ok(materials.len())
         }
         crate::models::ProviderKind::PodcastRss => {
-            let materials = state
+            let mut materials = state
                 .podcast_feed
                 .sync_feed_source_materials(&profile.source)
+                .await
+                .map_err(|err| err.to_string())?;
+            stabilize_podcast_episode_ids(&state.db, &profile.source, &mut materials)
                 .await
                 .map_err(|err| err.to_string())?;
             for material in &materials {
