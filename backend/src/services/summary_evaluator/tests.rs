@@ -441,21 +441,23 @@ fn parse_evaluation_response_handles_unscorable_schema_without_numeric_score() {
 }
 
 #[test]
-fn evaluation_prompt_sets_critical_but_realistic_tone() {
+fn evaluation_prompt_scores_substance_without_rewarding_padding() {
     let prompt = evaluation_prompt(
         "Example title",
         "This is a detailed transcript with several sections.",
         "- A short summary",
     );
 
-    assert!(evaluation_preamble().contains("critical but realistic review"));
-    assert!(prompt.contains("Write a critical but realistic review of the content."));
-    assert!(prompt.contains("Do not sugar-coat obvious misses, but do not destroy the summary over minor phrasing issues."));
-    assert!(prompt.contains(
-        "Focus on substantive problems; do not pad the note with praise and do not invent flaws."
-    ));
+    assert!(evaluation_preamble().contains("newsletter article"));
+    assert!(prompt.contains("Judge coverage by information, not word count"));
+    assert!(prompt.contains("report the missing claim as an omission"));
+    assert!(prompt.contains("Do not penalize omission of recording logistics"));
+    assert!(prompt.contains("Do not require every example"));
+    assert!(prompt.contains("Do not deduct points for stylistic preferences"));
+    assert!(prompt.contains("lower of the faithfulness and completeness scores"));
+    assert!(!prompt.contains("only 2-3 bullet points is almost certainly incomplete"));
     assert!(prompt.contains("Return one JSON object matching the runtime schema."));
-    assert!(!prompt.contains("\"faithfulness_score\""));
+    assert!(prompt.contains("Return raw JSON without Markdown code fences"));
     let schema = evaluator_response_schema();
     assert!(schema["properties"]["faithfulness_score"].is_object());
     assert!(schema["properties"]["completeness_score"].is_object());
@@ -472,5 +474,8 @@ fn evaluation_prompt_asks_for_the_fields_models_tend_to_drop() {
 
     assert!(prompt.contains("a severity (minor or major)"));
     assert!(prompt.contains("always give all three scores"));
+    for key in ["faithfulness_score", "completeness_score", "final_score"] {
+        assert!(prompt.contains(&format!("\"{key}\"")));
+    }
     assert!(prompt.contains("unscorable cause"));
 }

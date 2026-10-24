@@ -22,6 +22,22 @@ The summarizer reports availability to the frontend:
 
 The backend serves this status at `/api/health/ai`.
 
+### Article Style
+
+Summaries read as dense newsletter articles. They lead with the source's strongest finding or
+argument, then explain the reasoning, evidence, tradeoffs, and limits. The Overview introduces
+the subject itself, rather than describing the video's format, venue, or agenda.
+
+The four sections remain At a glance, Overview, Key Points, and Takeaways. Each has a separate
+purpose: main findings, essential context, supporting detail, and supported consequences or open
+questions. Closing advice is not invented to fill space. Length follows the amount of distinct
+information; greetings, recording logistics, repetition, and clear ads are omitted.
+
+The transcript supplies the facts. The title is only a topic label. Claims retain the speaker's
+uncertainty and attribution, and preferred vocabulary spellings still apply.
+
+Prompt changes apply to newly generated articles. Existing articles keep their text until regenerated.
+
 ### Output Checks
 
 Before a summary is stored, the backend cleans the model's reply:
@@ -76,6 +92,11 @@ The evaluator compares a generated summary against the transcript on:
 
 - faithfulness: summary claims are supported by the transcript
 - completeness: the summary covers the transcript's substantive editorial content
+
+Coverage is judged by information, not word count. Repeated examples and recording logistics are
+not required. Describing a topic without explaining its claims or findings counts as an omission;
+plain wording and concise writing do not count as defects. The requested final score is the lower
+of faithfulness and completeness.
 
 The evaluator reads the same vocabulary-corrected transcript as the summarizer. Without this, a
 correct name from the vocabulary list would look like a hallucination.

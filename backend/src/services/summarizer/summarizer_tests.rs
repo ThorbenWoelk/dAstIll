@@ -378,11 +378,28 @@ async fn summarize_cleans_leaked_reasoning_before_returning() {
     assert_eq!(summary, VALID_SUMMARY);
     assert_eq!(model, "qwen3:8b");
     let request = seen.await.unwrap();
+    // The provider must receive the editorial brief in the system role.
+    let system = request["system"].as_str().expect("system prompt");
+    assert!(system.contains("newsletter"));
+    assert!(system.contains("Lead with the strongest supported finding"));
     assert_eq!(request["think"], serde_json::json!(false));
     assert!(
         request["options"]["num_ctx"].as_u64().unwrap() >= u64::from(LOCAL_CONTEXT_MIN_TOKENS),
         "local models get an explicit context window: {request}"
     );
+}
+
+#[test]
+fn article_prompts_prioritize_substance_at_every_length() {
+    // Longer transcripts need more substance, not recording descriptions or padding.
+    for words in [100, 1000, 3000, 6000] {
+        let prompt = build_summary_prompt(&"word ".repeat(words), "Workshop", &[]);
+        assert!(prompt.contains("Do not describe the recording"));
+        assert!(prompt.contains("Keep qualifications, uncertainty, and attribution"));
+        assert!(prompt.contains("Do not repeat the opening bullets"));
+        assert!(!prompt.contains("Every argument, example, and conclusion"));
+        assert!(!prompt.contains("covering the video's main subject, context, and purpose"));
+    }
 }
 
 #[tokio::test]
@@ -573,6 +590,57 @@ fn live_summary_model() -> String {
 fn live_evaluator_model() -> String {
     std::env::var("SUMMARY_EVALUATOR_MODEL")
         .expect("SUMMARY_EVALUATOR_MODEL must be set for live Ollama tests")
+}
+
+#[tokio::test]
+#[ignore = "Live editorial regression - run with RUN_LIVE_OLLAMA_TESTS=1 cargo test live_ollama_workshop_article -- --ignored --nocapture"]
+async fn live_ollama_workshop_article_leads_with_findings() {
+    if !live_ollama_tests_enabled() {
+        return;
+    }
+
+    let core = OllamaCore::new(&live_ollama_url(), &live_summary_model())
+        .with_api_key(std::env::var("OLLAMA_API_KEY").ok());
+    let summarizer = SummarizerService::new(core);
+    let title = "Full Conference Workshop Recording: Queue Batching";
+    let transcript = "Welcome to this three-hour conference workshop recording. The agenda is introductions, a demo, and questions. \
+Please use the microphone. We tested batching on a queue with 16 workers processing 2,000 events per second. \
+Grouping 20 events per database transaction reduced median processing latency from 80 ms to 35 ms. \
+The reason was fewer transaction commits, not faster event processing. CPU use stayed unchanged. \
+However, at low traffic, waiting to fill a batch increased p99 latency from 120 ms to 260 ms. \
+We capped the batch wait at 10 ms to limit that delay, but have not measured the effect of that cap yet. \
+These are staging results on one workload, not a production benchmark. \
+I think batching is worth testing for busy queues; I would not recommend it for every workload. \
+To repeat, fewer commits explain the median improvement. \
+This break is sponsored by CloudCrate; use code WORKSHOP for a discount. Thanks for attending.";
+
+    let (summary, model) = summarizer
+        .summarize(transcript, title, "editorial-test", "test", &[])
+        .await
+        .expect("workshop article generation failed");
+    println!("Model: {model}\n{summary}");
+
+    // Verify the observed failure and preservation of the example's key evidence.
+    let lower = summary.to_lowercase();
+    for filler in ["conference", "workshop", "recording", "cloudcrate"] {
+        assert!(
+            !lower.contains(filler),
+            "source logistics leaked: {summary}"
+        );
+    }
+    for fact in ["80", "35", "120", "260", "10", "staging"] {
+        assert!(lower.contains(fact), "missing evidence {fact}: {summary}");
+    }
+    let evaluator = SummaryEvaluatorService::new(
+        OllamaCore::new(&live_ollama_url(), &live_evaluator_model())
+            .with_api_key(std::env::var("OLLAMA_API_KEY").ok()),
+    );
+    let evaluation = evaluator
+        .evaluate(transcript, &summary, title)
+        .await
+        .unwrap();
+    println!("Evaluation: {evaluation:?}");
+    assert!(evaluation.quality_score.is_some_and(|score| score >= 7));
 }
 
 #[tokio::test]
