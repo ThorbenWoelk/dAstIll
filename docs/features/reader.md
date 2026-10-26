@@ -64,14 +64,16 @@ The front page shows every channel together. Each channel is also a section with
 count. Pick a section in the bar under the masthead to read only that channel. The reader
 remembers your choice in this browser.
 
-Use **Sections** to follow a new channel or stop following one. Sign out is at
-the bottom of that page. You can add a
-YouTube `@handle`, a channel link, or a podcast feed URL. Removing a section stops following the
-channel. It does not delete anything for other readers.
+## Profile
+
+**Profile** holds your subscriptions and your account. Under **Subscriptions** you follow a new
+channel or stop following one. You can add a YouTube `@handle`, a channel link, or a podcast feed
+URL. Removing a channel stops following it. It does not delete anything for other readers. Sign out
+is under **Account**.
 
 ## Getting around on a phone
 
-The pages of the paper (Front page, Highlights, Finished, Sections) are in a bar along the bottom
+The pages of the paper (Front page, Highlights, Finished, Profile) are in a bar along the bottom
 of the screen, in easy reach of your thumb. On a wider screen they are links at the top right.
 
 While you scroll down a story, the bottom bar and the section bar slide away so the story has the

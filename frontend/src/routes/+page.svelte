@@ -169,7 +169,7 @@
   <section class="state">
     <h1>Your paper has no sections yet.</h1>
     <p>Follow a YouTube channel or podcast and its videos arrive here.</p>
-    <a class="press" href="/sections">Add a channel</a>
+    <a class="press" href="/profile">Add a channel</a>
   </section>
 {:else if reader.lead}
   {@const lead = reader.lead}

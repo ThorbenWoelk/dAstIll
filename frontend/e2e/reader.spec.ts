@@ -301,16 +301,20 @@ test("a reader without channels is sent to add one", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("link", { name: "Add a channel" }).click();
   await expect(
-    page.getByRole("heading", { name: "Sections", exact: true }),
+    page.getByRole("heading", { name: "Subscriptions" }),
   ).toBeVisible();
 });
 
-test("sections page adds and removes channels", async ({ page }) => {
+test("the profile page adds and removes subscriptions", async ({ page }) => {
   await openPaper(page, { channels: CHANNELS, stories: STORIES });
   await page
     .getByRole("navigation", { name: "Pages" })
-    .getByRole("link", { name: "Sections" })
+    .getByRole("link", { name: "Profile" })
     .click();
+  await expect(
+    page.getByRole("heading", { name: "Profile", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.getByLabel("Add a channel").fill("@newchannel");
   await page.getByRole("button", { name: "Add", exact: true }).click();

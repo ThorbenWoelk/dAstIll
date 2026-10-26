@@ -1,11 +1,11 @@
 /** The paper's pages. Phones show them as a tab bar along the bottom. */
-export type PaperPage = "front-page" | "highlights" | "finished" | "sections";
+export type PaperPage = "front-page" | "highlights" | "finished" | "profile";
 
 export const PAPER_PAGES: { id: PaperPage; name: string; href: string }[] = [
   { id: "front-page", name: "Front page", href: "/" },
   { id: "highlights", name: "Highlights", href: "/highlights" },
   { id: "finished", name: "Finished", href: "/finished" },
-  { id: "sections", name: "Sections", href: "/sections" },
+  { id: "profile", name: "Profile", href: "/profile" },
 ];
 
 /**

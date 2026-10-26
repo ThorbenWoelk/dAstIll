@@ -261,7 +261,7 @@ test.describe("phone", () => {
   }) => {
     await openPaper(page, { channels: CHANNELS, stories: STORIES });
     await expect(headline(page)).toBeVisible();
-    for (const name of ["Highlights", "Finished", "Sections"]) {
+    for (const name of ["Highlights", "Finished", "Profile"]) {
       await expect(
         page
           .getByRole("navigation", { name: "Pages" })

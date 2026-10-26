@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Move channel subscriptions and sign out to a new Profile page, which takes the Sections tab's place in the page bar.
 - Replace the sideways "In this story" line with sticky section headings that fold a section away to skip it.
 
 ### Fixed

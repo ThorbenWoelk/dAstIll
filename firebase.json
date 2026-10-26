@@ -25,6 +25,11 @@
           "type": 301
         },
         {
+          "source": "/sections",
+          "destination": "/profile",
+          "type": 301
+        },
+        {
           "source": "/docs",
           "destination": "https://dastill-docs.web.app",
           "type": 301
