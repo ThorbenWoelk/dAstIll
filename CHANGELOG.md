@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the sideways "In this story" line with sticky section headings that fold a section away to skip it.
+
 ### Fixed
 
 - Keep transcript jobs pending when a local extractor is missing, and discover installed extractor paths during shared-env setup.

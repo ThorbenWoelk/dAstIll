@@ -248,6 +248,8 @@
   }
 
   .spread {
+    /* Story section headings stick just below the phone section bar. */
+    --story-heading-top: calc((1 - var(--tucked, 0)) * (var(--touch) + 1px));
     display: flex;
     flex-wrap: wrap;
     column-gap: var(--space-7);
@@ -299,6 +301,10 @@
   }
 
   @media (min-width: 640px) {
+    .spread {
+      --story-heading-top: 0px;
+    }
+
     .state h1 {
       font-size: 40px;
     }

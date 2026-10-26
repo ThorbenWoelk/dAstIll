@@ -3,9 +3,9 @@
   import type { CreateHighlightRequest, Highlight } from "$lib/api";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import HighlightIcon from "$lib/components/icons/HighlightIcon.svelte";
-  import StoryContents from "$lib/components/StoryContents.svelte";
-  import { storyContents, type ContentsEntry } from "$lib/edition/contents";
+  import StorySection from "$lib/components/StorySection.svelte";
   import { renderMarkdown } from "$lib/edition/markdown";
+  import { storySections } from "$lib/edition/sections";
   import {
     describeReleaseDay,
     readingMinutes,
@@ -47,24 +47,16 @@
 
   const parts = $derived(splitSummary(story.summary));
   const glanceHtml = $derived(renderMarkdown(parts.glance));
-  const bodyHtml = $derived(renderMarkdown(parts.body));
+  const sections = $derived(
+    storySections(parts.body).map((section) => ({
+      ...section,
+      html: renderMarkdown(section.markdown),
+    })),
+  );
   const releaseDay = $derived(describeReleaseDay(story.publishedAt));
   const minutes = $derived(readingMinutes(story.summary));
 
   let article = $state<HTMLElement | null>(null);
-  let glanceBox = $state<HTMLElement | null>(null);
-  let bodyColumn = $state<HTMLElement | null>(null);
-  /** The rendered body headings the contents line can jump to. */
-  let bodyHeadings = $state<HTMLElement[]>([]);
-  const contents = $derived(
-    storyContents(
-      bodyHeadings.map((heading) => ({
-        level: Number(heading.tagName.slice(1)),
-        title: heading.textContent ?? "",
-      })),
-      Boolean(glanceHtml),
-    ),
-  );
   /** The selection the reader may turn into a highlight. */
   let selection = $state<{
     draft: CreateHighlightRequest;
@@ -82,32 +74,6 @@
     const passage = readPassage(root);
     markHighlights(passage, placeHighlights(passage.text, current));
   });
-
-  $effect(() => {
-    void bodyHtml;
-    bodyHeadings = bodyColumn
-      ? Array.from(
-          bodyColumn.querySelectorAll<HTMLElement>(
-            ":scope > h1, :scope > h2, :scope > h3",
-          ),
-        )
-      : [];
-  });
-
-  function jumpTo(entry: ContentsEntry) {
-    const target =
-      entry.heading === null ? glanceBox : bodyHeadings[entry.heading];
-    if (!target) return;
-    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)")
-      .matches;
-    target.scrollIntoView({
-      behavior: smooth ? "smooth" : "auto",
-      block: "start",
-    });
-    // Keyboard and screen reader users continue from the section.
-    target.tabIndex = -1;
-    target.focus({ preventScroll: true });
-  }
 
   $effect(() => {
     if (tapped && !highlights.some((h) => h.id === tapped?.id)) tapped = null;
@@ -224,22 +190,33 @@
       </a>
     </p>
 
-    {#if contents.length > 0}
-      <StoryContents entries={contents} onJump={jumpTo} />
-    {/if}
-
     {#if glanceHtml}
-      <aside
-        class="glance"
-        aria-labelledby="glance-heading"
-        bind:this={glanceBox}
-      >
-        <h2 id="glance-heading" class="label" data-passage-skip>At a glance</h2>
-        <div class="glance-list">{@html glanceHtml}</div>
+      <aside class="glance" aria-labelledby="glance-heading">
+        <StorySection
+          title="At a glance"
+          headingId="glance-heading"
+          passageSkip
+        >
+          <div class="glance-list">{@html glanceHtml}</div>
+        </StorySection>
       </aside>
     {/if}
 
-    <div class="body" bind:this={bodyColumn}>{@html bodyHtml}</div>
+    <div class="body">
+      {#each sections as section, index (index)}
+        {#if section.title === null}
+          <div class={["text", index === 0 && "lead-text"]}>
+            {@html section.html}
+          </div>
+        {:else}
+          <StorySection title={section.title} level={section.level}>
+            <div class={["text", index === 0 && "lead-text"]}>
+              {@html section.html}
+            </div>
+          </StorySection>
+        {/if}
+      {/each}
+    </div>
 
     {#if selection}
       <div
@@ -353,23 +330,11 @@
     gap: var(--space-1);
   }
 
-  /* Clear of the section bar that sticks to the top on phones. */
-  .glance,
-  .body :global(:is(h1, h2, h3)) {
-    scroll-margin-top: calc(
-      var(--touch) + env(safe-area-inset-top) + var(--space-4)
-    );
-  }
-
   .glance {
     margin: 0 0 var(--space-5);
-    padding: var(--space-3) 0 var(--space-1);
+    padding: 0 0 var(--space-1);
     border-top: 2px solid var(--rule);
     border-bottom: 1px solid var(--hairline);
-  }
-
-  .glance h2 {
-    margin: 0 0 var(--space-2);
   }
 
   .glance-list :global(ul) {
@@ -392,9 +357,10 @@
     overflow-wrap: break-word;
   }
 
-  .body :global(h1),
-  .body :global(h2),
-  .body :global(h3) {
+  /* Subheadings inside a section. Section headings are StorySection's. */
+  .text :global(h1),
+  .text :global(h2),
+  .text :global(h3) {
     margin: var(--space-5) 0 var(--space-2);
     font-family: var(--sans);
     font-size: 12px;
@@ -404,12 +370,12 @@
     break-after: avoid;
   }
 
-  .body :global(h3) {
+  .text :global(h3) {
     letter-spacing: 0.08em;
     color: var(--ink-soft);
   }
 
-  .body > :global(:first-child) {
+  .text > :global(:first-child) {
     margin-top: 0;
   }
 
@@ -417,7 +383,7 @@
     margin: 0 0 var(--space-4);
   }
 
-  .body > :global(p:first-of-type::first-letter) {
+  .lead-text > :global(p:first-of-type::first-letter) {
     float: left;
     padding: 6px var(--space-2) 0 0;
     font-size: 56px;
@@ -469,7 +435,7 @@
   }
 
   @media (min-width: 960px) {
-    .body {
+    .text {
       columns: 2;
       column-gap: 40px;
       column-rule: 1px solid var(--hairline);

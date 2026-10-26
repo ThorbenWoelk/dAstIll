@@ -22,7 +22,7 @@ export interface SummaryParts {
 type SectionKind = "glance" | "overview" | "keyPoints" | "takeaways";
 
 /** A heading (level 1 to 3) and the lines up to the next one. */
-interface SummaryBlock {
+export interface SummaryBlock {
   /** Heading level, or 0 for text before the first heading. */
   level: number;
   /** Heading text without markup, colon, or leading emoji. */
@@ -100,7 +100,7 @@ function removeModelChatter(markdown: string): string {
 }
 
 /** Cuts the text at headings of level 1 to 3, skipping code blocks. */
-function splitBlocks(markdown: string): SummaryBlock[] {
+export function splitBlocks(markdown: string): SummaryBlock[] {
   const blocks: SummaryBlock[] = [];
   let current: SummaryBlock = {
     level: 0,

@@ -12,8 +12,9 @@ the next one takes its place.
 - The summary's "At a glance" points sit in a box above the article. The key points and takeaways
   follow as the body.
 - "Watch the video" opens the original on YouTube.
-- Under the byline, **In this story** lists the story's sections, like At a glance, Key Points, and
-  Takeaways. Pick one to jump straight to it. Short stories with only one section do not show it.
+- Each section of a story, like At a glance, Key Points, and Takeaways, has a heading that stays at
+  the top of the screen while you read that section. Tap the heading to fold the section away and
+  skip to the next one. Tap it again to open it.
 - "Also in this edition" lists the next stories. Pick one to read it next.
 
 ## Moving between stories

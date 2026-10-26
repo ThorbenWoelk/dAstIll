@@ -217,7 +217,7 @@ test("a TL;DR summary with tags and timestamps in prose reads like the standard 
   await expect(body.getByRole("link")).toHaveCount(0);
 });
 
-test("the contents line jumps to the sections of a long story", async ({
+test("section headings stick while reading and fold a section away", async ({
   page,
 }) => {
   const detail = "A long paragraph of detail. ".repeat(80);
@@ -242,24 +242,44 @@ ${detail}
 `,
     })),
   });
-  const contents = page.getByRole("navigation", { name: "In this story" });
-  await expect(contents.getByRole("button")).toHaveText([
+  const article = page.locator("article");
+  await expect(article.locator("[aria-expanded]")).toHaveText([
     "At a glance",
     "Key Points",
     "Takeaways",
   ]);
+  // The glance heading is never part of a highlight passage.
+  await expect(page.locator("#glance-heading")).toHaveAttribute(
+    "data-passage-skip",
+    "",
+  );
 
-  const takeaways = page.locator(".body h2", { hasText: "Takeaways" });
+  // Reading into Key Points keeps its heading at the top of the screen.
+  const keyPoints = article.getByRole("button", { name: "Key Points" });
+  await page
+    .getByRole("heading", { name: "Proposed Solutions" })
+    .scrollIntoViewIfNeeded();
+  await expect(keyPoints).toBeInViewport();
+
+  // Folding it brings the reader to the next section.
+  const takeaways = article.getByRole("button", { name: "Takeaways" });
   await expect(takeaways).not.toBeInViewport();
-  await contents.getByRole("button", { name: "Takeaways" }).click();
+  await keyPoints.click();
+  await expect(keyPoints).toHaveAttribute("aria-expanded", "false");
+  await expect(
+    page.getByRole("heading", { name: "Proposed Solutions" }),
+  ).toBeHidden();
   await expect(takeaways).toBeInViewport();
-  await expect(takeaways).toBeFocused();
+  await expect(article.getByText("Something to remember.")).toBeVisible();
 
-  // Contents text is never part of a highlight passage.
-  await expect(contents).toHaveAttribute("data-passage-skip", "");
+  await keyPoints.click();
+  await expect(keyPoints).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.getByRole("heading", { name: "Proposed Solutions" }),
+  ).toBeVisible();
 });
 
-test("a short story without sections has no contents line", async ({
+test("a short story without sections has no section headings", async ({
   page,
 }) => {
   await openPaper(page, {
@@ -270,9 +290,8 @@ test("a short story without sections has no contents line", async ({
     })),
   });
   await expect(headline(page)).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: "In this story" }),
-  ).toHaveCount(0);
+  await expect(page.getByText("Just one paragraph about")).toBeVisible();
+  await expect(page.locator("article [aria-expanded]")).toHaveCount(0);
 });
 
 test("a reader without channels is sent to add one", async ({ page }) => {
@@ -357,6 +376,9 @@ test.describe("desktop", () => {
           : false;
       })
       .toBe(true);
-    await expect(page.locator(".body")).toHaveCSS("column-count", "2");
+    await expect(page.locator(".body .text").first()).toHaveCSS(
+      "column-count",
+      "2",
+    );
   });
 });
