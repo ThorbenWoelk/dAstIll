@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tokio::time::timeout;
 
-use super::prompts::{build_clean_transcript_prompt, build_summary_prompt};
+use super::prompts::{SUMMARY_PREAMBLE, build_clean_transcript_prompt, build_summary_prompt};
 use super::transcript_compare::detect_transcript_mismatch;
 use super::transcript_size::{
     LOCAL_CONTEXT_MAX_TOKENS, LOCAL_CONTEXT_MIN_TOKENS, SUMMARY_MAX_TIMEOUT_SECS,
@@ -400,6 +400,20 @@ fn article_prompts_prioritize_substance_at_every_length() {
         assert!(!prompt.contains("Every argument, example, and conclusion"));
         assert!(!prompt.contains("covering the video's main subject, context, and purpose"));
     }
+}
+
+#[test]
+fn article_prompts_forbid_empty_rhetoric() {
+    // Summaries must report the source, not invent rankings, contrasts, or verdicts.
+    let prompt = build_summary_prompt("alpha beta", "Title", &[]);
+    assert!(prompt.contains("Do not rank, weigh, or contrast items unless the transcript does."));
+    assert!(prompt.contains("Do not build \"X, not Y\""));
+    assert!(prompt.contains("Every \"because\", \"so\", or \"which means\" must give a reason"));
+    assert!(prompt.contains("Do not tell the reader how to feel"));
+    assert!(prompt.contains("Do not use em dashes"));
+    assert!(!prompt.contains("stakes, or main tension"));
+    assert!(SUMMARY_PREAMBLE.contains("do not editorialize"));
+    assert!(!SUMMARY_PREAMBLE.contains("and why it matters using"));
 }
 
 #[tokio::test]
