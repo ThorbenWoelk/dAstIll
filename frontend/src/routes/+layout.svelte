@@ -10,6 +10,7 @@
   import { onMount, type Snippet } from "svelte";
   import { dev } from "$app/environment";
   import { afterNavigate } from "$app/navigation";
+  import { page } from "$app/state";
   import Masthead from "$lib/components/Masthead.svelte";
   import SignIn from "$lib/components/SignIn.svelte";
   import { watchScroll, type ScrollWatch } from "$lib/navigation/tuck";
@@ -36,6 +37,7 @@
 <div
   class="page"
   class:has-tab-bar={session.status === "signed-in"}
+  class:wide={page.route.id === "/"}
   style:--tucked={tucked ? 1 : 0}
 >
   {#if session.status === "signed-in"}
@@ -75,6 +77,13 @@
     .page.has-tab-bar {
       --tab-bar-offset: 0px;
       padding: 0 var(--space-7);
+    }
+  }
+
+  /* The front page spreads across wide screens; other pages keep the column. */
+  @media (min-width: 1360px) {
+    .page.wide {
+      max-width: var(--column-wide);
     }
   }
 </style>

@@ -5,10 +5,13 @@
     sections,
     active,
     onSelect,
+    orientation = "row",
   }: {
     sections: Section[];
     active: SectionId;
     onSelect: (section: SectionId) => void;
+    /** A bar across the page, or a list down the side of a wide reader. */
+    orientation?: "row" | "column";
   } = $props();
 
   let bar = $state<HTMLElement | null>(null);
@@ -29,7 +32,7 @@
   });
 </script>
 
-<nav class="sections" aria-label="Sections" bind:this={bar}>
+<nav class={["sections", orientation]} aria-label="Sections" bind:this={bar}>
   <ul>
     {#each sections as section (section.id)}
       <li>
@@ -124,5 +127,35 @@
       min-width: 100%;
       column-gap: var(--space-6);
     }
+  }
+
+  /* Down the side of the reader on wide screens: one section per line. */
+  .sections.column {
+    position: static;
+    margin: 0;
+    padding: 0;
+    border-bottom: 0;
+    overflow: visible;
+    transform: none;
+    transition: none;
+  }
+
+  .column ul {
+    flex-direction: column;
+    gap: 0;
+    width: auto;
+    min-width: 0;
+    border-top: 2px solid var(--rule);
+  }
+
+  .column li {
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .column button {
+    justify-content: space-between;
+    width: 100%;
+    white-space: normal;
+    text-align: left;
   }
 </style>

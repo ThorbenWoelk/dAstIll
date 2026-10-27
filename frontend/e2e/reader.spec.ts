@@ -30,7 +30,9 @@ test("front page leads with the newest story from all channels", async ({
   );
   await expect(page.locator(".kicker")).toHaveText("The Long Build");
   await expect(
-    page.getByText("Standfirst for Why small teams ship calmer software"),
+    page
+      .getByRole("article")
+      .getByText("Standfirst for Why small teams ship calmer software"),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "At a glance" }),

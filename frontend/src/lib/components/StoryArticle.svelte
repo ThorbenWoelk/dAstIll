@@ -5,7 +5,11 @@
   import HighlightIcon from "$lib/components/icons/HighlightIcon.svelte";
   import StorySection from "$lib/components/StorySection.svelte";
   import { renderMarkdown } from "$lib/edition/markdown";
-  import { storySections } from "$lib/edition/sections";
+  import {
+    GLANCE_PART_ID,
+    storyPartId,
+    storySections,
+  } from "$lib/edition/sections";
   import {
     describeReleaseDay,
     readingMinutes,
@@ -195,6 +199,7 @@
         <StorySection
           title="At a glance"
           headingId="glance-heading"
+          anchorId={GLANCE_PART_ID}
           passageSkip
         >
           <div class="glance-list">{@html glanceHtml}</div>
@@ -209,7 +214,11 @@
             {@html section.html}
           </div>
         {:else}
-          <StorySection title={section.title} level={section.level}>
+          <StorySection
+            title={section.title}
+            level={section.level}
+            anchorId={storyPartId(index)}
+          >
             <div class={["text", index === 0 && "lead-text"]}>
               {@html section.html}
             </div>
@@ -439,6 +448,12 @@
       columns: 2;
       column-gap: 40px;
       column-rule: 1px solid var(--hairline);
+    }
+  }
+
+  @media (min-width: 1360px) {
+    h1 {
+      font-size: 56px;
     }
   }
 </style>

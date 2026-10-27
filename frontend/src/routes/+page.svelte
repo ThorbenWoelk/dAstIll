@@ -1,12 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { pushState } from "$app/navigation";
+  import { page } from "$app/state";
   import AlsoInEdition from "$lib/components/AlsoInEdition.svelte";
   import EditionNotice from "$lib/components/EditionNotice.svelte";
+  import FrontPage from "$lib/components/FrontPage.svelte";
   import Masthead from "$lib/components/Masthead.svelte";
   import RefreshIcon from "$lib/components/icons/RefreshIcon.svelte";
   import ReadBar from "$lib/components/ReadBar.svelte";
   import SectionNav from "$lib/components/SectionNav.svelte";
   import StoryArticle from "$lib/components/StoryArticle.svelte";
+  import StoryMargin from "$lib/components/StoryMargin.svelte";
   import StoryPager from "$lib/components/StoryPager.svelte";
   import { EditionReader } from "$lib/edition/reader.svelte";
   import { StoryHighlights } from "$lib/highlights/story-highlights.svelte";
@@ -24,6 +28,11 @@
   const highlights = new StoryHighlights();
   /** How the next lead story arrives on the page. */
   let entrance = $state<"print" | TurnDirection>("print");
+  /**
+   * Wide screens open on the front page grid and read a story picked from
+   * it. Narrower screens always show the reader; CSS decides which shows.
+   */
+  const storyOpen = $derived(page.state.storyOpen === true);
 
   onMount(() => {
     void reader.refresh();
@@ -54,6 +63,18 @@
     entrance = "print";
     reader.pick(storyId);
     backToTop();
+  }
+
+  /** Read a story picked on the front page grid. Back returns to the grid. */
+  function openStory(storyId: string) {
+    entrance = "print";
+    reader.pick(storyId);
+    pushState("", { storyOpen: true });
+    backToTop();
+  }
+
+  function backToFrontPage() {
+    history.back();
   }
 
   /** Swipe, pager, and arrow keys: browse the section without reading. */
@@ -133,11 +154,13 @@
   {/snippet}
   {#snippet nav()}
     {#if reader.channels.length > 0}
-      <SectionNav
-        sections={reader.sections}
-        active={reader.section}
-        onSelect={chooseSection}
-      />
+      <div class="top-sections" class:story-open={storyOpen}>
+        <SectionNav
+          sections={reader.sections}
+          active={reader.section}
+          onSelect={chooseSection}
+        />
+      </div>
     {/if}
   {/snippet}
 </Masthead>
@@ -173,38 +196,80 @@
   </section>
 {:else if reader.lead}
   {@const lead = reader.lead}
-  <div class="spread">
-    <div class="lead">
-      <StoryPager position={reader.position} onTurn={turn} />
-      <div
-        {@attach storySwipe({
-          canGo: (direction) => reader.canTurn(direction),
-          go: turn,
-        })}
-      >
-        <StoryArticle
-          story={reader.lead}
-          {entrance}
-          highlights={highlights.items}
-          onHighlight={(draft) => highlights.add(lead.id, draft)}
-          onRemoveHighlight={(id) => highlights.remove(lead.id, id)}
-        >
-          {#snippet footer()}
-            <ReadBar
-              undoTitle={reader.lastRead?.title ?? null}
-              onRead={markAsRead}
-              onUndo={undoLastRead}
-            />
-          {/snippet}
-        </StoryArticle>
-      </div>
-    </div>
-    <div class="rail">
-      <AlsoInEdition
-        stories={reader.alsoInEdition}
-        remaining={reader.visible.length - 1}
-        onPick={pickStory}
+  <div class="edition" class:story-open={storyOpen}>
+    <div class="front-view">
+      <FrontPage
+        stories={reader.visible}
+        {lead}
+        undoTitle={reader.lastRead?.title ?? null}
+        onOpen={openStory}
+        onRead={markAsRead}
+        onUndo={undoLastRead}
       />
+    </div>
+    <div class="spread">
+      <div class="side-sections">
+        <SectionNav
+          sections={reader.sections}
+          active={reader.section}
+          onSelect={chooseSection}
+          orientation="column"
+        />
+        <dl class="keys" aria-label="Keyboard shortcuts">
+          <dt>R</dt>
+          <dd>Mark as read</dd>
+          <dt>U</dt>
+          <dd>Undo</dd>
+          <dt>J / K</dt>
+          <dd>Next / previous</dd>
+        </dl>
+      </div>
+      <div class="lead">
+        {#if storyOpen}
+          <button type="button" class="back" onclick={backToFrontPage}>
+            <span aria-hidden="true">‹</span> Front page
+          </button>
+        {/if}
+        <StoryPager position={reader.position} onTurn={turn} />
+        <div
+          {@attach storySwipe({
+            canGo: (direction) => reader.canTurn(direction),
+            go: turn,
+          })}
+        >
+          <StoryArticle
+            story={reader.lead}
+            {entrance}
+            highlights={highlights.items}
+            onHighlight={(draft) => highlights.add(lead.id, draft)}
+            onRemoveHighlight={(id) => highlights.remove(lead.id, id)}
+          >
+            {#snippet footer()}
+              <ReadBar
+                undoTitle={reader.lastRead?.title ?? null}
+                onRead={markAsRead}
+                onUndo={undoLastRead}
+              />
+            {/snippet}
+          </StoryArticle>
+        </div>
+      </div>
+      <div class="rail">
+        <div class="also">
+          <AlsoInEdition
+            stories={reader.alsoInEdition}
+            remaining={reader.visible.length - 1}
+            onPick={pickStory}
+          />
+        </div>
+        <div class="margin-notes">
+          <StoryMargin
+            story={lead}
+            highlights={highlights.items}
+            onRemoveHighlight={(id) => highlights.remove(lead.id, id)}
+          />
+        </div>
+      </div>
     </div>
   </div>
 {:else}
@@ -266,6 +331,58 @@
     min-width: 0;
   }
 
+  /* No boxes of their own, so the rail's lists can stick beside the story. */
+  .top-sections,
+  .also {
+    display: contents;
+  }
+
+  /* Wide screens only: the front page grid, side sections, and margin. */
+  .front-view,
+  .side-sections,
+  .margin-notes {
+    display: none;
+  }
+
+  .back {
+    display: none;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: var(--touch);
+    padding: 0 var(--space-2) 0 0;
+    border: 0;
+    background: none;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+
+  .back:hover {
+    color: var(--ink);
+  }
+
+  .keys {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-2) var(--space-3);
+    margin: var(--space-6) 0 0;
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--rule);
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  .keys dt {
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .keys dd {
+    margin: 0;
+  }
+
   .state {
     max-width: 560px;
     margin: 0 auto;
@@ -307,6 +424,49 @@
 
     .state h1 {
       font-size: 40px;
+    }
+  }
+
+  /*
+   * Wide screens: the front page opens on the grid. A story picked there
+   * reads between the sections and the margin, and Back returns to the grid.
+   */
+  @media (min-width: 1360px) {
+    .edition:not(.story-open) .spread,
+    .top-sections.story-open,
+    .also {
+      display: none;
+    }
+
+    .edition:not(.story-open) .front-view {
+      display: block;
+    }
+
+    .spread {
+      display: grid;
+      grid-template-columns: 200px minmax(0, 1fr) 300px;
+      column-gap: var(--space-7);
+      align-items: start;
+    }
+
+    .back {
+      display: inline-flex;
+    }
+
+    .side-sections {
+      position: sticky;
+      top: var(--space-4);
+      display: block;
+      padding-top: var(--space-6);
+    }
+
+    /* Full height, so the margin can stick while the story scrolls. */
+    .rail {
+      align-self: stretch;
+    }
+
+    .margin-notes {
+      display: contents;
     }
   }
 </style>

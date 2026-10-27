@@ -6,6 +6,7 @@
     title,
     level = 2,
     headingId,
+    anchorId,
     passageSkip = false,
     children,
   }: {
@@ -13,6 +14,8 @@
     /** 1 to 3: the heading tag. */
     level?: number;
     headingId?: string;
+    /** Element id of the whole section, so the margin can jump to it. */
+    anchorId?: string;
     /** Leave the heading out of the highlight passage. */
     passageSkip?: boolean;
     children: Snippet;
@@ -39,7 +42,7 @@
   }
 </script>
 
-<section class="story-section" bind:this={section}>
+<section class="story-section" id={anchorId} bind:this={section}>
   <svelte:element
     this={`h${Math.min(Math.max(level, 1), 3)}`}
     id={headingId}

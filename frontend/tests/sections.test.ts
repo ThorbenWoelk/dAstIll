@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 
-import { storySections } from "../src/lib/edition/sections";
+import {
+  GLANCE_PART_ID,
+  outlineStory,
+  storyPartId,
+  storySections,
+} from "../src/lib/edition/sections";
 
 describe("storySections", () => {
   it("cuts the body at its top-level headings", () => {
@@ -51,5 +56,29 @@ describe("storySections", () => {
 
   it("is empty for an empty body", () => {
     expect(storySections("")).toEqual([]);
+  });
+});
+
+describe("outlineStory", () => {
+  it("lists the glance box, then each titled body section", () => {
+    expect(
+      outlineStory(
+        "## At a glance\n- One.\n\n## Overview\nShort overview.\n\n## Key Points\nFirst.\n\n## Takeaways\n- Remember.\n",
+      ),
+    ).toEqual([
+      { id: GLANCE_PART_ID, title: "At a glance" },
+      { id: storyPartId(0), title: "Key Points" },
+      { id: storyPartId(1), title: "Takeaways" },
+    ]);
+  });
+
+  it("skips untitled text and keeps the section's index as its id", () => {
+    expect(outlineStory("Intro line.\n\n## Background\nFirst.")).toEqual([
+      { id: storyPartId(1), title: "Background" },
+    ]);
+  });
+
+  it("is empty for a story without headings", () => {
+    expect(outlineStory("Just one paragraph.")).toEqual([]);
   });
 });

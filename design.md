@@ -57,7 +57,7 @@ All colors are CSS custom properties on `:root` in `src/app.css`. Never hardcode
 ### Spacing
 
 - 4px grid: `--space-1` (4) through `--space-8` (64). Use the tokens, not raw pixel values.
-- Page column: `--column` (1120px), side padding `--space-4` on phones and `--space-7` from 640px.
+- Page column: `--column` (1120px), side padding `--space-4` on phones and `--space-7` from 640px. From 1360px the front page widens to `--column-wide` (1760px); other pages keep `--column`.
 - Touch targets are at least `--touch` (44px). The primary button is 52px tall on phones.
 - `--tab-bar` (48px) is the phone tab bar's height without the safe area. `--tuck-ms` (200ms) is how fast the bars tuck away and come back.
 
@@ -88,12 +88,14 @@ Source: [`assets/dastill-icon.svg`](./assets/dastill-icon.svg). A kicker-red pla
 | Component | Job |
 | --- | --- |
 | `Masthead` | Dateline (long date from 640px, short date on phones) with status and actions, then the `dAstIll` title and the 2px rule. Every screen uses it. The page links (Front page, Highlights, Finished, Profile) are one `nav`: a tab bar fixed along the bottom on phones, quiet links in the dateline from 640px. The current page uses `aria-current="page"`: kicker color and a 2px kicker rule in the tab bar, bold in the dateline. The front page hides its own dateline link. The optional nav slot renders after the header so it can stick. |
-| `SectionNav` | "Front page" plus one button per channel with unread counts. Stays on one line, scrolls sideways when needed, and keeps the active section in view at every width. On phones it runs full width and sticks to the top of the screen. From 640px it centers when all sections fit and scrolls with the page. The active section uses `aria-current="page"` and the kicker color. |
+| `SectionNav` | "Front page" plus one button per channel with unread counts. Stays on one line, scrolls sideways when needed, and keeps the active section in view at every width. On phones it runs full width and sticks to the top of the screen. From 640px it centers when all sections fit and scrolls with the page. The active section uses `aria-current="page"` and the kicker color. `orientation="column"` lists the sections down the left of a story opened from the front page grid. |
+| `FrontPage` | The front page grid from 1360px: the lead with its standfirst, "At a glance", "Read the story", and "Mark as read"; the next three stories beside it; the rest of the section in four columns under "More in this edition". Every story opens in the reader. |
 | `StoryPager` | "‹ Previous", "2 of 14", "Next ›" above the lead story. Moves through the section without marking anything read. A turn that is not possible is hidden but keeps its place. |
 | `StoryArticle` | Kicker, headline, standfirst, byline, "At a glance" box, and body. Body sections are one column on phones and two columns from 960px. `entrance` says how a new story arrives: printed in place (`.print-in`) or turned in from the side it came from (`.turn-in-next`, `.turn-in-previous`). Given `onHighlight`, it shows a Highlight button under a text selection and marks saved highlights in `--marker`. Tapping a mark offers "Remove highlight". |
 | `StorySection` | A story section under a sticky heading that folds the section away. See [Story sections](#story-sections). |
 | `ReadBar` | "Mark as read" and, after a read, an "Undo" button. Sticky on phones, just above the tab bar, and at the screen edge while the tab bar is tucked away. Inline after the article from 960px. |
-| `AlsoInEdition` | The next six stories in the section. Each one is a button that makes it the lead. Below the article on phones, a sticky right column from 960px. |
+| `AlsoInEdition` | The next six stories in the section. Each one is a button that makes it the lead. Below the article on phones, a sticky right column from 960px. Hidden from 1360px, where the front page grid lists the edition. |
+| `StoryMargin` | The right column of a story from 1360px: "In this story" jumps to each section, and "Your highlights" lists the story's highlights with Remove. Sticky beside the article. |
 | `EditionNotice` | A non-blocking message (a failed request) with Dismiss. |
 | `SignIn` | The signed-out page under the masthead. |
 
@@ -178,10 +180,18 @@ Write base styles for phones. Add layout with `@media (min-width: 640px)` and `@
 | base | One column. Tab bar along the bottom. Sticky section bar and read bar, both tucking with the tab bar. Rail below the article. Short dateline. |
 | 640px | Page links in the dateline, no tab bar. Long dateline, larger title and headline, centered section bar that scrolls with the page, two-column glance list. |
 | 960px | Rail beside the article, two-column body, read bar inline. |
+| 1360px | Front page grid (`FrontPage`). A story picked there reads in three columns: sections on the left, the article, and `StoryMargin` on the right. |
 
 ### One codebase, two sizes
 
 Breakpoints change layout, never behavior. Do not branch on viewport width in JavaScript. The same components, state, and handlers run at every size. CSS owns the size story.
+
+### Front page grid
+
+- From 1360px the front page opens on the grid and hides the reader. Narrower screens hide the grid and show the reader, as before. Both are rendered from the same `EditionReader` state; CSS picks which one shows.
+- Picking a story on the grid makes it the lead and adds a shallow history entry (`pushState`, `page.state.storyOpen`). "‹ Front page" and the browser's Back both return to the grid.
+- In the opened story, marking it read brings the next story up in place, as on narrower screens. The keyboard shortcuts work on the grid too: `R` marks the grid's lead read, and `J`/`K` change which story leads.
+- The margin's "In this story" entries are buttons that scroll to the section, not hash links, so they never leave the opened story.
 
 ### Tab bar and tucking
 
@@ -241,7 +251,7 @@ E2E specs mock the backend with `page.route` (`e2e/mock-backend.ts`) and sign in
 - A pure function that sorts, filters, maps, or parses data needs a unit test.
 - Anything observable in the DOM needs at least one E2E assertion on that element.
 - Anything that depends on a real DOM (for example HTML sanitizing) is tested in E2E, not with a simulated DOM.
-- A layout that changes at a breakpoint needs an E2E check at a phone viewport (375 x 812) and a desktop viewport (1280 x 900).
+- A layout that changes at a breakpoint needs an E2E check at a phone viewport (375 x 812) and a desktop viewport (1280 x 900). The wide front page (`e2e/front-page.spec.ts`) is checked at 1440 x 900.
 
 ### Running tests
 

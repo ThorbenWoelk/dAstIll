@@ -7,6 +7,7 @@ import {
   describeStoriesLeft,
   FRONT_PAGE,
   insertStory,
+  layOutFrontPage,
   listSections,
   locateStory,
   readingMinutes,
@@ -108,6 +109,34 @@ describe("chooseLeadStory", () => {
 
   it("has no lead when the section is empty", () => {
     expect(chooseLeadStory([], null)).toBeNull();
+  });
+});
+
+describe("layOutFrontPage", () => {
+  const stories = collectUnreadStories(
+    ["a", "b", "c", "d", "e", "f"].map((id, index) =>
+      summaryItem(id, { published_at: `2026-10-0${9 - index}T00:00:00Z` }),
+    ),
+  );
+
+  it("puts three stories beside the lead and the rest below", () => {
+    const layout = layOutFrontPage(stories, stories[0]);
+    expect(layout.lead.id).toBe("a");
+    expect(layout.beside.map((s) => s.id)).toEqual(["b", "c", "d"]);
+    expect(layout.below.map((s) => s.id)).toEqual(["e", "f"]);
+  });
+
+  it("leaves a picked lead out of the stories around it", () => {
+    const layout = layOutFrontPage(stories, stories[2]);
+    expect(layout.lead.id).toBe("c");
+    expect(layout.beside.map((s) => s.id)).toEqual(["a", "b", "d"]);
+    expect(layout.below.map((s) => s.id)).toEqual(["e", "f"]);
+  });
+
+  it("has nothing below when the section is short", () => {
+    const layout = layOutFrontPage(stories.slice(0, 2), stories[0]);
+    expect(layout.beside.map((s) => s.id)).toEqual(["b"]);
+    expect(layout.below).toEqual([]);
   });
 });
 

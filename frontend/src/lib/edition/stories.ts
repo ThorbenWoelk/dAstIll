@@ -109,6 +109,27 @@ export function chooseLeadStory(
   return visible[0] ?? null;
 }
 
+const STORIES_BESIDE_LEAD = 3;
+
+/** The front page on wide screens: the lead, a few beside it, the rest below. */
+export interface FrontPageLayout {
+  lead: Story;
+  beside: Story[];
+  below: Story[];
+}
+
+export function layOutFrontPage(
+  visible: Story[],
+  lead: Story,
+): FrontPageLayout {
+  const rest = visible.filter((story) => story.id !== lead.id);
+  return {
+    lead,
+    beside: rest.slice(0, STORIES_BESIDE_LEAD),
+    below: rest.slice(STORIES_BESIDE_LEAD),
+  };
+}
+
 /** "next" is the older story after the lead, "previous" the newer one. */
 export type TurnDirection = "next" | "previous";
 

@@ -34,6 +34,8 @@
   --space-8: 64px;
 
   --column: 1120px;
+  /* The front page from 1360px: grid, or reader with sections and margin. */
+  --column-wide: 1760px;
   --measure: 68ch;
   --touch: 44px;
 

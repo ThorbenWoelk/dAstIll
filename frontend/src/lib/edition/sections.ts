@@ -4,7 +4,7 @@
  * are described in design.md under "Story sections".
  */
 import { toPlainText } from "./markdown";
-import { splitBlocks } from "./summary";
+import { splitBlocks, splitSummary } from "./summary";
 
 export interface StorySection {
   /** Heading text as the reader sees it, or null for text before it. */
@@ -48,4 +48,32 @@ export function storySections(body: string): StorySection[] {
   return sections
     .map((section) => ({ ...section, markdown: section.markdown.trim() }))
     .filter((section) => section.title !== null || section.markdown);
+}
+
+/** A heading in the story the reader can jump to from the margin. */
+export interface StoryPart {
+  /** The element id of the part's section. */
+  id: string;
+  title: string;
+}
+
+export const GLANCE_PART_ID = "story-part-glance";
+
+/** The element id of a body section, by its index in `storySections`. */
+export function storyPartId(index: number): string {
+  return `story-part-${index}`;
+}
+
+/** "At a glance" when the story has one, then every titled body section. */
+export function outlineStory(summary: string): StoryPart[] {
+  const parts = splitSummary(summary);
+  const outline: StoryPart[] = parts.glance.trim()
+    ? [{ id: GLANCE_PART_ID, title: "At a glance" }]
+    : [];
+  storySections(parts.body).forEach((section, index) => {
+    if (section.title) {
+      outline.push({ id: storyPartId(index), title: section.title });
+    }
+  });
+  return outline;
 }
