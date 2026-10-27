@@ -55,9 +55,9 @@ what is wrong with it, for example "invents a ranking the video never makes", an
 writing** again. The passage gets a red wavy underline. Tap or click it to see your note or remove
 the flag.
 
-New summaries take flagged passages and their notes into account. The writer sees the 20 most
-recent flags from all readers and is told to avoid writing that way. Summaries that already exist do
-not change until they are written again.
+New summaries take flagged passages and their notes into account. The writer sees every flag from
+every reader and is told to avoid writing that way. Summaries that already exist do not change until
+they are written again.
 
 **Profile** lists every passage you flagged, with your note. Remove a flag there when it no longer
 applies.

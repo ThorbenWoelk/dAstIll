@@ -13,11 +13,6 @@ fn writing_flag_key(user_id: &str, id: i64) -> String {
     format!("{}{id}.json", user_prefix(user_id))
 }
 
-/// The id at the end of a flag's key. Ids grow with time.
-fn writing_flag_id_of_key(key: &str) -> Option<i64> {
-    key.rsplit('/').next()?.strip_suffix(".json")?.parse().ok()
-}
-
 fn newest_first(flags: &mut [WritingFlag]) {
     flags.sort_by(|left, right| {
         right
@@ -84,26 +79,9 @@ pub async fn delete_writing_flag(
     Ok(exists)
 }
 
-/// The newest flags from every reader, for the summary writer. Reads only
-/// the `limit` newest records.
-pub async fn list_recent_writing_flags(
-    store: &Store,
-    limit: usize,
-) -> Result<Vec<WritingFlag>, StoreError> {
-    let mut keys = store
-        .list_keys(WRITING_FLAG_PREFIX)
-        .await?
-        .into_iter()
-        .filter_map(|key| writing_flag_id_of_key(&key).map(|id| (id, key)))
-        .collect::<Vec<_>>();
-    keys.sort_by(|left, right| right.0.cmp(&left.0));
-
-    let mut flags = Vec::new();
-    for (_, key) in keys.into_iter().take(limit) {
-        if let Some(flag) = store.get_json::<WritingFlag>(&key).await? {
-            flags.push(flag);
-        }
-    }
+/// Every flag from every reader, newest first, for the summary writer.
+pub async fn list_all_writing_flags(store: &Store) -> Result<Vec<WritingFlag>, StoreError> {
+    let mut flags: Vec<WritingFlag> = store.load_all(WRITING_FLAG_PREFIX).await?;
     newest_first(&mut flags);
     Ok(flags)
 }

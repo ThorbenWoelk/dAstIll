@@ -2,10 +2,7 @@ use std::time::Duration;
 
 use tokio::time::timeout;
 
-use super::prompts::{
-    MAX_WRITING_FLAGS_IN_PROMPT, SUMMARY_PREAMBLE, build_clean_transcript_prompt,
-    build_summary_prompt,
-};
+use super::prompts::{SUMMARY_PREAMBLE, build_clean_transcript_prompt, build_summary_prompt};
 use super::transcript_compare::detect_transcript_mismatch;
 use super::transcript_size::{
     LOCAL_CONTEXT_MAX_TOKENS, LOCAL_CONTEXT_MIN_TOKENS, SUMMARY_MAX_TIMEOUT_SECS,
@@ -472,17 +469,15 @@ fn summary_prompt_without_flags_has_no_feedback_section() {
 }
 
 #[test]
-fn summary_prompt_caps_flag_count_and_length() {
+fn summary_prompt_includes_every_flag_with_its_whole_note() {
     let long = "word ".repeat(500);
-    let flags = (0..MAX_WRITING_FLAGS_IN_PROMPT + 5)
+    let flags = (0..50)
         .map(|_| writing_flag(&long, &long))
         .collect::<Vec<_>>();
     let prompt = build_summary_prompt("alpha beta", "Title", &[], &flags);
 
-    assert_eq!(
-        prompt.matches("- Flagged:").count(),
-        MAX_WRITING_FLAGS_IN_PROMPT
-    );
+    assert_eq!(prompt.matches("- Flagged:").count(), 50);
+    assert!(prompt.contains(&format!("Reader's note: \"{}\"", long.trim())));
     let first_quote = prompt
         .split("- Flagged: \"")
         .nth(1)

@@ -119,8 +119,9 @@ Writing flags are passages of a summary that a signed-in reader marked as bad wr
 `writing-flags/{user_id}/{id}.json`. Each flag stores `id`, `video_id`, `text`, `comment`,
 `prefix_context`, `suffix_context`, and `created_at`.
 
-The summary writer reads the 20 newest flags from all readers and adds them to the summary prompt as
-style feedback. It reads only those 20 records.
+The summary writer reads every flag from every reader and adds them to the summary prompt as style
+feedback, newest first. Each note goes in whole; a flagged passage longer than 400 characters is
+shortened. Summaries stay shared between readers, so every reader's flags shape every summary.
 
 ## Chat Storage
 

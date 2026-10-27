@@ -18,7 +18,6 @@ use crate::services::ollama::{
 
 pub use output::SummaryOutputProblem;
 use output::{check_summary_output, clean_summary_output};
-pub use prompts::MAX_WRITING_FLAGS_IN_PROMPT;
 use prompts::{
     SUMMARY_PREAMBLE, TRANSCRIPT_CLEAN_PREAMBLE, build_clean_transcript_prompt,
     build_summary_prompt,

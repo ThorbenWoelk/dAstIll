@@ -44,14 +44,17 @@ Safety fallback:
     prompt
 }
 
-/// Most flags the summary writer sees; the newest come first.
-pub const MAX_WRITING_FLAGS_IN_PROMPT: usize = 20;
+/// A flagged passage is only an example; its note carries the feedback.
 const MAX_FLAGGED_TEXT_CHARS_IN_PROMPT: usize = 400;
-const MAX_FLAG_NOTE_CHARS_IN_PROMPT: usize = 300;
 
-/// Folds whitespace so a quote stays on one line, and cuts it to `max_chars`.
+/// Folds whitespace so text stays on one line.
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// One line of text, cut to `max_chars`.
 fn quote_for_prompt(text: &str, max_chars: usize) -> String {
-    let folded = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let folded = one_line(text);
     if folded.chars().count() <= max_chars {
         return folded;
     }
@@ -59,14 +62,13 @@ fn quote_for_prompt(text: &str, max_chars: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
-/// Passages readers flagged in earlier summaries, with their notes.
+/// Every passage readers flagged in earlier summaries, with their notes.
 fn reader_style_feedback(writing_flags: &[WritingFlag]) -> Option<String> {
     let examples = writing_flags
         .iter()
-        .take(MAX_WRITING_FLAGS_IN_PROMPT)
         .filter_map(|flag| {
             let text = quote_for_prompt(&flag.text, MAX_FLAGGED_TEXT_CHARS_IN_PROMPT);
-            let note = quote_for_prompt(&flag.comment, MAX_FLAG_NOTE_CHARS_IN_PROMPT);
+            let note = one_line(&flag.comment);
             (!text.is_empty() && !note.is_empty())
                 .then(|| format!("- Flagged: \"{text}\"\n  Reader's note: \"{note}\""))
         })

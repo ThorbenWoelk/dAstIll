@@ -1,20 +1,7 @@
 use super::{
-    create_writing_flag, delete_writing_flag, list_recent_writing_flags, list_video_writing_flags,
-    writing_flag_id_of_key,
+    create_writing_flag, delete_writing_flag, list_all_writing_flags, list_video_writing_flags,
 };
 use crate::db::Store;
-
-#[test]
-fn writing_flag_id_of_key_reads_the_file_name() {
-    assert_eq!(
-        writing_flag_id_of_key("writing-flags/user-1/17000000000001234.json"),
-        Some(17000000000001234)
-    );
-    assert_eq!(
-        writing_flag_id_of_key("writing-flags/user-1/notes.txt"),
-        None
-    );
-}
 
 #[tokio::test]
 async fn writing_flags_are_listed_per_reader_and_video() {
@@ -53,7 +40,7 @@ async fn only_the_reader_who_flagged_can_delete_it() {
 }
 
 #[tokio::test]
-async fn recent_writing_flags_come_from_every_reader_newest_first() {
+async fn all_writing_flags_come_from_every_reader_newest_first() {
     let store = Store::for_test().await;
     for (user, text) in [("u1", "first"), ("u2", "second"), ("u1", "third")] {
         create_writing_flag(&store, user, "v1", text, "note", "", "")
@@ -62,10 +49,10 @@ async fn recent_writing_flags_come_from_every_reader_newest_first() {
         tokio::time::sleep(std::time::Duration::from_millis(2)).await;
     }
 
-    let recent = list_recent_writing_flags(&store, 2).await.unwrap();
-    let texts = recent
+    let flags = list_all_writing_flags(&store).await.unwrap();
+    let texts = flags
         .iter()
         .map(|flag| flag.text.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(texts, ["third", "second"]);
+    assert_eq!(texts, ["third", "second", "first"]);
 }

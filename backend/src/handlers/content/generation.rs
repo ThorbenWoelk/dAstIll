@@ -732,10 +732,10 @@ fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus)
     }
 }
 
-/// Passages readers flagged as bad writing, for the summary writer. A
+/// Every passage readers flagged as bad writing, for the summary writer. A
 /// summary is still written when they cannot be loaded.
 async fn load_style_feedback(state: &AppState) -> Vec<crate::models::WritingFlag> {
-    match db::list_recent_writing_flags(&state.db, MAX_WRITING_FLAGS_IN_PROMPT).await {
+    match db::list_all_writing_flags(&state.db).await {
         Ok(flags) => flags,
         Err(error) => {
             tracing::warn!(error = %error, "could not load writing flags for the summary prompt");
