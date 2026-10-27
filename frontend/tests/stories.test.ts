@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   chooseLeadStory,
   collectUnreadStories,
+  describeAuthor,
   describeReleaseDay,
   describeStoriesLeft,
   FRONT_PAGE,
@@ -51,6 +52,25 @@ describe("collectUnreadStories", () => {
       summaryItem("dated"),
     ]);
     expect(stories.map((s) => s.id)).toEqual(["dated", "undated"]);
+  });
+});
+
+describe("describeAuthor", () => {
+  it("names the model without its cloud tag", () => {
+    expect(describeAuthor("glm-5.1:cloud")).toBe("glm-5.1");
+    expect(describeAuthor("qwen3.5:397b-cloud")).toBe("qwen3.5:397b");
+    expect(describeAuthor("gemma3:27b")).toBe("gemma3:27b");
+  });
+
+  it("gives no author when the model is unknown", () => {
+    expect(describeAuthor(null)).toBeNull();
+    expect(describeAuthor(undefined)).toBeNull();
+    expect(describeAuthor("  ")).toBeNull();
+  });
+
+  it("carries the summary model onto the story", () => {
+    const [story] = collectUnreadStories([summaryItem("a")]);
+    expect(story.summaryModel).toBe("glm-5.1:cloud");
   });
 });
 

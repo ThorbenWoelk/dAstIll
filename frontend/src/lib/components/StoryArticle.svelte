@@ -11,6 +11,7 @@
     storySections,
   } from "$lib/edition/sections";
   import {
+    describeAuthor,
     describeReleaseDay,
     readingMinutes,
     type Story,
@@ -44,6 +45,7 @@
       html: renderMarkdown(section.markdown),
     })),
   );
+  const author = $derived(describeAuthor(story.summaryModel));
   const releaseDay = $derived(describeReleaseDay(story.publishedAt));
   const minutes = $derived(readingMinutes(story.summary));
 </script>
@@ -60,6 +62,7 @@
         <p class="standfirst">{parts.standfirst}</p>
       {/if}
       <p class="byline" data-passage-skip>
+        {#if author}<span class="author">By {author}</span>{/if}
         {#if releaseDay}<span>{releaseDay}</span>{/if}
         <span>{minutes} min read</span>
         <a href={story.watchUrl} target="_blank" rel="noopener noreferrer">
@@ -151,6 +154,11 @@
     font-family: var(--sans);
     font-size: 12px;
     color: var(--ink-soft);
+  }
+
+  .author {
+    font-weight: 600;
+    color: var(--ink);
   }
 
   .byline a {

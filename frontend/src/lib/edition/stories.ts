@@ -9,6 +9,8 @@ export interface Story {
   publishedAt: string | null;
   watchUrl: string;
   summary: string;
+  /** The model that wrote the summary; the story's author. */
+  summaryModel: string | null;
 }
 
 /** `"front-page"` shows every channel; anything else is a channel id. */
@@ -30,7 +32,19 @@ export function toStory(item: MiniSummaryItem): Story {
     publishedAt: item.published_at,
     watchUrl: item.watch_url,
     summary: item.summary_content,
+    summaryModel: item.summary_model ?? null,
   };
+}
+
+/**
+ * The byline name for a summary's model. Drops the Ollama `cloud` tag,
+ * which says where the model ran, not who it is.
+ */
+export function describeAuthor(
+  model: string | null | undefined,
+): string | null {
+  const name = model?.trim().replace(/[:-]cloud$/i, "");
+  return name ? name : null;
 }
 
 function publishedTime(story: Story): number {

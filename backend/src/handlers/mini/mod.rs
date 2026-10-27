@@ -45,6 +45,9 @@ pub struct MiniSummaryItem {
     pub published_at: Option<DateTime<Utc>>,
     pub watch_url: String,
     pub summary_content: String,
+    /// The model that wrote the summary, shown as the story's author.
+    #[serde(default)]
+    pub summary_model: Option<String>,
     pub read: bool,
 }
 
@@ -129,6 +132,7 @@ fn build_mini_summary_item(
             .map(|item| item.watch_url.clone())
             .unwrap_or_else(|| format!("https://www.youtube.com/watch?v={}", video.id)),
         summary_content: summary.content.clone(),
+        summary_model: summary.model_used.clone(),
         read: video.acknowledged,
     }
 }

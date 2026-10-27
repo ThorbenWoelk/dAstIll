@@ -25,6 +25,7 @@ export function summaryItem(
     published_at: "2026-10-01T08:00:00Z",
     watch_url: `https://www.youtube.com/watch?v=${videoId}`,
     summary_content: "## Overview\nA short overview.\n\n## Key Points\n- One",
+    summary_model: "glm-5.1:cloud",
     read: false,
     ...overrides,
   };

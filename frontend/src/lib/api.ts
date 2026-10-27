@@ -21,6 +21,8 @@ export interface MiniSummaryItem {
   published_at: string | null;
   watch_url: string;
   summary_content: string;
+  /** The model that wrote the summary. */
+  summary_model: string | null;
   read: boolean;
 }
 

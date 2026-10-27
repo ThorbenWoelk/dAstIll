@@ -40,6 +40,7 @@ fn build_mini_summary_item_falls_back_without_video_info() {
     assert_eq!(item.channel_name, "HealthyGamerGG");
     assert_eq!(item.watch_url, "https://www.youtube.com/watch?v=video-1");
     assert_eq!(item.summary_content, "Summary content");
+    assert_eq!(item.summary_model, None);
     assert!(item.read);
 }
 
@@ -61,7 +62,7 @@ fn build_mini_summary_item_prefers_video_info_when_present() {
     let summary = Summary {
         video_id: video.id.clone(),
         content: "Summary content".to_string(),
-        model_used: None,
+        model_used: Some("glm-5.1:cloud".to_string()),
         quality_score: None,
         quality_note: None,
         quality_model_used: None,
@@ -90,6 +91,7 @@ fn build_mini_summary_item_prefers_video_info_when_present() {
         item.thumbnail_url.as_deref(),
         Some("https://example.com/info-thumb.jpg")
     );
+    assert_eq!(item.summary_model.as_deref(), Some("glm-5.1:cloud"));
     assert!(!item.read);
 }
 

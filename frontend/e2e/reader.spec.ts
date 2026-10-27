@@ -29,6 +29,7 @@ test("front page leads with the newest story from all channels", async ({
     "Why small teams ship calmer software",
   );
   await expect(page.locator(".kicker")).toHaveText("The Long Build");
+  await expect(page.locator(".byline")).toContainText("By glm-5.1");
   await expect(
     page
       .getByRole("article")
@@ -279,6 +280,15 @@ ${detail}
   await expect(
     page.getByRole("heading", { name: "Proposed Solutions" }),
   ).toBeVisible();
+});
+
+test("a summary with no recorded model has no author", async ({ page }) => {
+  await openPaper(page, {
+    channels: CHANNELS,
+    stories: [{ ...STORIES[0], summaryModel: null }],
+  });
+  await expect(page.locator(".byline")).toContainText("min read");
+  await expect(page.locator(".byline")).not.toContainText("By ");
 });
 
 test("a short story without sections has no section headings", async ({

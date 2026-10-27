@@ -15,6 +15,8 @@ export interface MockStory {
   title: string;
   publishedAt: string;
   summary?: string;
+  /** Defaults to a summary model; `null` for a summary with no recorded model. */
+  summaryModel?: string | null;
 }
 
 export function summaryFor(title: string): string {
@@ -32,6 +34,12 @@ Standfirst for ${title}.
 ## Takeaways
 - Something to remember.
 `;
+}
+
+function modelFor(story: MockStory): string | null {
+  return story.summaryModel === undefined
+    ? "glm-5.1:cloud"
+    : story.summaryModel;
 }
 
 export interface MockHighlight {
@@ -99,6 +107,7 @@ export async function openPaper(
     published_at: story.publishedAt,
     watch_url: `https://www.youtube.com/watch?v=${story.id}`,
     summary_content: story.summary ?? summaryFor(story.title),
+    summary_model: modelFor(story),
     read: backend.read.has(story.id),
   });
 
@@ -173,6 +182,7 @@ export async function openPaper(
             published_at: s.publishedAt,
             watch_url: `https://www.youtube.com/watch?v=${s.id}`,
             summary_content: s.summary ?? summaryFor(s.title),
+            summary_model: modelFor(s),
             read: false,
           }))
       : [];
