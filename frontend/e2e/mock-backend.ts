@@ -52,9 +52,21 @@ export interface MockHighlight {
   created_at: string;
 }
 
+export interface MockWritingFlag {
+  id: string;
+  video_id: string;
+  text: string;
+  comment: string;
+  prefix_context: string;
+  suffix_context: string;
+  created_at: string;
+}
+
 export interface MockBackend {
   channels: MockChannel[];
   stories: MockStory[];
+  writingFlags: MockWritingFlag[];
+  deletedWritingFlagIds: string[];
   /** Read story ids, in the order they were finished. */
   read: Set<string>;
   highlights: MockHighlight[];
@@ -83,6 +95,7 @@ export async function openPaper(
     stories: MockStory[];
     read?: string[];
     highlights?: MockHighlight[];
+    writingFlags?: MockWritingFlag[];
   },
   options: { signedIn?: boolean; path?: string } = {},
 ): Promise<MockBackend> {
@@ -91,6 +104,8 @@ export async function openPaper(
     stories: [...data.stories],
     read: new Set(data.read ?? []),
     highlights: [...(data.highlights ?? [])],
+    writingFlags: [...(data.writingFlags ?? [])],
+    deletedWritingFlagIds: [],
     deletedHighlightIds: [],
     readRequests: [],
     miniRequests: [],
@@ -217,6 +232,42 @@ export async function openPaper(
     return route.fulfill({
       json: backend.highlights.filter((h) => h.video_id === videoId),
     });
+  });
+
+  await page.route("**/api/videos/*/writing-flags", async (route: Route) => {
+    const request = route.request();
+    const videoId = decodeURIComponent(
+      new URL(request.url()).pathname.split("/")[3],
+    );
+    if (request.method() === "POST") {
+      const draft = request.postDataJSON() as Omit<
+        MockWritingFlag,
+        "id" | "video_id" | "created_at"
+      >;
+      const saved: MockWritingFlag = {
+        ...draft,
+        id: String(nextHighlightId++),
+        video_id: videoId,
+        created_at: new Date().toISOString(),
+      };
+      backend.writingFlags.push(saved);
+      return route.fulfill({ status: 201, json: saved });
+    }
+    return route.fulfill({
+      json: backend.writingFlags.filter((f) => f.video_id === videoId),
+    });
+  });
+
+  await page.route("**/api/writing-flags**", async (route: Route) => {
+    const request = route.request();
+    if (request.method() === "DELETE") {
+      const url = new URL(request.url());
+      const id = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      backend.deletedWritingFlagIds.push(id);
+      backend.writingFlags = backend.writingFlags.filter((f) => f.id !== id);
+      return route.fulfill({ status: 204 });
+    }
+    return route.fulfill({ json: [...backend.writingFlags].reverse() });
   });
 
   await page.route("**/api/highlights**", async (route: Route) => {

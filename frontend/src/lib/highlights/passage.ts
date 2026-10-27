@@ -1,4 +1,4 @@
-import type { PlacedHighlight, TextSpan } from "$lib/highlights/anchoring";
+import type { MarkKind, PlacedMark, TextSpan } from "$lib/highlights/anchoring";
 
 /**
  * The readable text of a story as one string, with a line break between
@@ -27,7 +27,13 @@ const BLOCK_TAGS = new Set([
   "UL",
 ]);
 
-const MARK_CLASS = "reader-highlight";
+const MARK_CLASSES: Record<MarkKind, string> = {
+  highlight: "reader-highlight",
+  flag: "writing-flag",
+};
+const MARK_SELECTOR = Object.values(MARK_CLASSES)
+  .map((name) => `mark.${name}`)
+  .join(", ");
 
 function blockOf(node: Node, root: Element): Element {
   let element = node.parentElement;
@@ -86,8 +92,8 @@ export function spanOfRange(
   return end > start ? { start, end } : null;
 }
 
-/** Wraps each placed highlight in `<mark>`, one per text node it covers. */
-export function markHighlights(passage: Passage, placed: PlacedHighlight[]) {
+/** Wraps each placed span in `<mark>`, one per text node it covers. */
+export function markHighlights(passage: Passage, placed: PlacedMark[]) {
   // Work backwards so splitting a text node never moves an earlier span.
   const latestFirst = [...placed].sort((a, b) => b.start - a.start);
   for (const span of latestFirst) {
@@ -102,7 +108,7 @@ export function markHighlights(passage: Passage, placed: PlacedHighlight[]) {
       if (from > 0) target = target.splitText(from);
       if (to - from < target.length) target.splitText(to - from);
       const mark = document.createElement("mark");
-      mark.className = MARK_CLASS;
+      mark.className = MARK_CLASSES[span.kind];
       mark.dataset.highlightId = span.id;
       target.before(mark);
       mark.append(target);
@@ -111,15 +117,22 @@ export function markHighlights(passage: Passage, placed: PlacedHighlight[]) {
 }
 
 export function clearHighlightMarks(root: Element) {
-  for (const mark of root.querySelectorAll(`mark.${MARK_CLASS}`)) {
+  for (const mark of root.querySelectorAll(MARK_SELECTOR)) {
     mark.replaceWith(...mark.childNodes);
   }
   root.normalize();
 }
 
-/** The highlight id of a mark under an event target, if any. */
-export function highlightIdAt(target: EventTarget | null): string | null {
+/** The highlight or flag marked under an event target, if any. */
+export function markAt(
+  target: EventTarget | null,
+): { kind: MarkKind; id: string; element: HTMLElement } | null {
   if (!(target instanceof Element)) return null;
-  const mark = target.closest<HTMLElement>(`mark.${MARK_CLASS}`);
-  return mark?.dataset.highlightId ?? null;
+  const element = target.closest<HTMLElement>(MARK_SELECTOR);
+  const id = element?.dataset.highlightId;
+  if (!element || !id) return null;
+  const kind = element.classList.contains(MARK_CLASSES.flag)
+    ? "flag"
+    : "highlight";
+  return { kind, id, element };
 }

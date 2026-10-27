@@ -1,6 +1,11 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { CreateHighlightRequest, Highlight } from "$lib/api";
+  import type {
+    CreateHighlightRequest,
+    CreateWritingFlagRequest,
+    Highlight,
+    WritingFlag,
+  } from "$lib/api";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
   import HighlightPassage from "$lib/components/HighlightPassage.svelte";
   import StorySection from "$lib/components/StorySection.svelte";
@@ -24,8 +29,11 @@
     entrance = "print",
     footer,
     highlights = [],
+    flags = [],
     onHighlight,
     onRemoveHighlight,
+    onFlag,
+    onRemoveFlag,
   }: {
     story: Story;
     /** How a new story arrives: printed in place, or turned in from a side. */
@@ -35,6 +43,11 @@
     /** Omit to turn highlighting off. */
     onHighlight?: (draft: CreateHighlightRequest) => void;
     onRemoveHighlight?: (highlightId: string) => void;
+    /** Passages the reader flagged as bad writing. */
+    flags?: WritingFlag[];
+    /** Omit to turn flagging off. */
+    onFlag?: (draft: CreateWritingFlagRequest) => void;
+    onRemoveFlag?: (flagId: string) => void;
   } = $props();
 
   const parts = $derived(splitSummary(story.summary));
@@ -55,7 +68,14 @@
     class={["story", entrance === "print" ? "print-in" : `turn-in-${entrance}`]}
     aria-labelledby="story-headline"
   >
-    <HighlightPassage {highlights} {onHighlight} {onRemoveHighlight}>
+    <HighlightPassage
+      {highlights}
+      {flags}
+      {onHighlight}
+      {onRemoveHighlight}
+      {onFlag}
+      {onRemoveFlag}
+    >
       <p class="label kicker" data-passage-skip>{story.channelName}</p>
       <h1 id="story-headline" data-passage-skip>{story.title}</h1>
       {#if parts.standfirst}

@@ -48,6 +48,20 @@ marked when you come back to the story. Tap or click a highlight to remove it.
 in the search box to find a passage by its words, the story title, or the channel name. Select a
 story title to open the full story.
 
+## Flag bad writing
+
+If a passage in a summary reads badly, select it and press **Flag writing**. Write a short note on
+what is wrong with it, for example "invents a ranking the video never makes", and press **Flag
+writing** again. The passage gets a red wavy underline. Tap or click it to see your note or remove
+the flag.
+
+New summaries take flagged passages and their notes into account. The writer sees the 20 most
+recent flags from all readers and is told to avoid writing that way. Summaries that already exist do
+not change until they are written again.
+
+**Profile** lists every passage you flagged, with your note. Remove a flag there when it no longer
+applies.
+
 ## Finished stories
 
 **Finished** lists the stories you marked as read, the most recently finished

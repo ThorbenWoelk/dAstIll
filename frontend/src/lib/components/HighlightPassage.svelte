@@ -1,14 +1,22 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { CreateHighlightRequest, Highlight } from "$lib/api";
+  import type {
+    CreateHighlightRequest,
+    CreateWritingFlagRequest,
+    Highlight,
+    WritingFlag,
+  } from "$lib/api";
   import HighlightIcon from "$lib/components/icons/HighlightIcon.svelte";
+  import WritingFlagForm from "$lib/components/WritingFlagForm.svelte";
   import {
     buildHighlightDraft,
+    combineMarks,
     placeHighlights,
+    type MarkKind,
   } from "$lib/highlights/anchoring";
   import {
     clearHighlightMarks,
-    highlightIdAt,
+    markAt,
     markHighlights,
     readPassage,
     spanOfRange,
@@ -16,18 +24,27 @@
 
   let {
     highlights = [],
+    flags = [],
     onHighlight,
     onRemoveHighlight,
+    onFlag,
+    onRemoveFlag,
     children,
   }: {
     highlights?: Highlight[];
+    /** Passages the reader flagged as bad writing. */
+    flags?: WritingFlag[];
     /** Omit to turn highlighting off. */
     onHighlight?: (draft: CreateHighlightRequest) => void;
     onRemoveHighlight?: (highlightId: string) => void;
+    /** Omit to turn flagging off. */
+    onFlag?: (draft: CreateWritingFlagRequest) => void;
+    onRemoveFlag?: (flagId: string) => void;
     children: Snippet;
   } = $props();
 
-  const TOOLBAR_HALF_WIDTH = 90;
+  /** Half the widest toolbar: one button, or two and the flag form. */
+  const toolbarHalfWidth = $derived(onFlag ? 160 : 90);
 
   let root = $state<HTMLElement | null>(null);
   /** The selection the reader may turn into a highlight. */
@@ -36,26 +53,49 @@
     top: number;
     left: number;
   } | null>(null);
-  /** The highlight the reader tapped, offered for removal. */
-  let tapped = $state<{ id: string; top: number; left: number } | null>(null);
+  /** The highlight or flag the reader tapped, offered for removal. */
+  let tapped = $state<{
+    kind: MarkKind;
+    id: string;
+    top: number;
+    left: number;
+  } | null>(null);
+  /** The selection the reader is writing a flag note for. */
+  let flagging = $state<{
+    draft: CreateHighlightRequest;
+    top: number;
+    left: number;
+  } | null>(null);
+  const tappedFlag = $derived(
+    tapped?.kind === "flag" ? flags.find((f) => f.id === tapped?.id) : null,
+  );
 
   $effect(() => {
     const element = root;
-    const current = highlights;
+    const currentHighlights = highlights;
+    const currentFlags = flags;
     if (!element) return;
     clearHighlightMarks(element);
     const passage = readPassage(element);
-    markHighlights(passage, placeHighlights(passage.text, current));
+    markHighlights(
+      passage,
+      combineMarks(
+        placeHighlights(passage.text, currentHighlights),
+        placeHighlights(passage.text, currentFlags),
+      ),
+    );
   });
 
   $effect(() => {
-    if (tapped && !highlights.some((h) => h.id === tapped?.id)) tapped = null;
+    if (!tapped) return;
+    const list: { id: string }[] = tapped.kind === "flag" ? flags : highlights;
+    if (!list.some((item) => item.id === tapped?.id)) tapped = null;
   });
 
   /** Position for a toolbar just below `rect`, inside the passage. */
   function below(rect: DOMRect) {
     const box = root!.getBoundingClientRect();
-    const half = Math.min(TOOLBAR_HALF_WIDTH, box.width / 2);
+    const half = Math.min(toolbarHalfWidth, box.width / 2);
     const center = rect.left + rect.width / 2 - box.left;
     return {
       top: rect.bottom - box.top + 8,
@@ -86,7 +126,9 @@
   }
 
   function readSelection() {
-    if (!onHighlight || !root || pressingToolbar) return;
+    if ((!onHighlight && !onFlag) || !root || pressingToolbar || flagging) {
+      return;
+    }
     const current = document.getSelection();
     if (!current || current.isCollapsed || current.rangeCount === 0) {
       selection = null;
@@ -115,20 +157,46 @@
     selection = null;
   }
 
+  /** Keeps the selection, and asks why the passage reads badly. */
+  function startFlag() {
+    clearTimeout(releaseTimer);
+    pressingToolbar = false;
+    if (!selection || !onFlag) return;
+    flagging = selection;
+    selection = null;
+  }
+
+  function saveFlag(comment: string) {
+    if (!flagging || !onFlag) return;
+    const { text, prefix_context, suffix_context } = flagging.draft;
+    onFlag({ text, comment, prefix_context, suffix_context });
+    document.getSelection()?.removeAllRanges();
+    flagging = null;
+  }
+
+  function cancelFlag() {
+    flagging = null;
+    readSelection();
+  }
+
   function handleClick(event: MouseEvent) {
-    if (!onRemoveHighlight) return;
-    const id = highlightIdAt(event.target);
-    if (!id || !document.getSelection()?.isCollapsed) {
+    const mark = markAt(event.target);
+    const removable = mark?.kind === "flag" ? onRemoveFlag : onRemoveHighlight;
+    if (!mark || !removable || !document.getSelection()?.isCollapsed) {
       tapped = null;
       return;
     }
-    const mark = (event.target as Element).closest("mark")!;
-    tapped = { id, ...below(mark.getBoundingClientRect()) };
+    tapped = {
+      kind: mark.kind,
+      id: mark.id,
+      ...below(mark.element.getBoundingClientRect()),
+    };
   }
 
   function removeTapped() {
-    if (!tapped || !onRemoveHighlight) return;
-    onRemoveHighlight(tapped.id);
+    if (!tapped) return;
+    if (tapped.kind === "flag") onRemoveFlag?.(tapped.id);
+    else onRemoveHighlight?.(tapped.id);
     tapped = null;
   }
 
@@ -136,6 +204,7 @@
     if (event.key === "Escape") {
       selection = null;
       tapped = null;
+      flagging = null;
     }
   }
 </script>
@@ -151,24 +220,51 @@
 <div class="passage" bind:this={root} onclick={handleClick}>
   {@render children()}
 
-  {#if selection}
+  {#if flagging}
     <div
       class="toolbar"
+      style:top="{flagging.top}px"
+      style:left="{flagging.left}px"
+      data-passage-skip
+    >
+      <WritingFlagForm
+        passage={flagging.draft.text}
+        onSave={saveFlag}
+        onCancel={cancelFlag}
+      />
+    </div>
+  {:else if selection}
+    <div
+      class="toolbar actions"
       style:top="{selection.top}px"
       style:left="{selection.left}px"
       data-passage-skip
     >
-      <button
-        type="button"
-        class="press"
-        onpointerdown={pressToolbar}
-        onpointerup={releaseToolbar}
-        onpointercancel={releaseToolbar}
-        onclick={highlightSelection}
-      >
-        <HighlightIcon />
-        Highlight
-      </button>
+      {#if onHighlight}
+        <button
+          type="button"
+          class="press"
+          onpointerdown={pressToolbar}
+          onpointerup={releaseToolbar}
+          onpointercancel={releaseToolbar}
+          onclick={highlightSelection}
+        >
+          <HighlightIcon />
+          Highlight
+        </button>
+      {/if}
+      {#if onFlag}
+        <button
+          type="button"
+          class="press flag"
+          onpointerdown={pressToolbar}
+          onpointerup={releaseToolbar}
+          onpointercancel={releaseToolbar}
+          onclick={startFlag}
+        >
+          Flag writing
+        </button>
+      {/if}
     </div>
   {:else if tapped}
     <div
@@ -177,8 +273,11 @@
       style:left="{tapped.left}px"
       data-passage-skip
     >
+      {#if tappedFlag}
+        <p class="flag-note">{tappedFlag.comment}</p>
+      {/if}
       <button type="button" class="press" onclick={removeTapped}>
-        Remove highlight
+        {tapped.kind === "flag" ? "Remove flag" : "Remove highlight"}
       </button>
     </div>
   {/if}
@@ -198,10 +297,40 @@
     -webkit-box-decoration-break: clone;
   }
 
+  .passage :global(mark.writing-flag) {
+    padding: 0.05em 0;
+    background: none;
+    color: inherit;
+    text-decoration: underline wavy var(--danger);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+    cursor: pointer;
+  }
+
   .toolbar {
     position: absolute;
     z-index: 2;
     transform: translateX(-50%);
+  }
+
+  .toolbar.actions {
+    display: flex;
+    gap: 1px;
+  }
+
+  .toolbar .press.flag {
+    background: var(--danger);
+  }
+
+  .flag-note {
+    max-width: min(320px, calc(100vw - 2 * var(--space-4)));
+    margin: 0 0 1px;
+    padding: var(--space-2) var(--space-3);
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.4;
   }
 
   .toolbar .press {

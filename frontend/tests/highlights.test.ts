@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import type { Highlight, HighlightChannelGroup } from "../src/lib/api";
 import {
   buildHighlightDraft,
+  combineMarks,
   placeHighlights,
 } from "../src/lib/highlights/anchoring";
 import {
@@ -117,6 +118,27 @@ function group(
     })),
   };
 }
+
+describe("combineMarks", () => {
+  it("keeps highlights and flags apart, in reading order", () => {
+    const marks = combineMarks(
+      [{ id: "h", start: 20, end: 30 }],
+      [{ id: "f", start: 0, end: 10 }],
+    );
+    expect(marks).toEqual([
+      { id: "f", start: 0, end: 10, kind: "flag" },
+      { id: "h", start: 20, end: 30, kind: "highlight" },
+    ]);
+  });
+
+  it("shows a flag where it overlaps a highlight", () => {
+    const marks = combineMarks(
+      [{ id: "h", start: 0, end: 20 }],
+      [{ id: "f", start: 10, end: 30 }],
+    );
+    expect(marks.map((mark) => mark.id)).toEqual(["f"]);
+  });
+});
 
 describe("highlight collection", () => {
   const stories = listHighlightedStories([

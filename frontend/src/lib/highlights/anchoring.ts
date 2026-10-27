@@ -18,6 +18,12 @@ export interface PlacedHighlight extends TextSpan {
   id: string;
 }
 
+/** Anything saved as text plus context: a highlight or a writing flag. */
+export type AnchoredText = Pick<
+  Highlight,
+  "id" | "text" | "prefix_context" | "suffix_context"
+>;
+
 /** Turns a selected span of the story text into a highlight to save. */
 export function buildHighlightDraft(
   text: string,
@@ -89,7 +95,10 @@ function sharedStart(after: string, context: string): number {
   return count;
 }
 
-function placeOne(passage: FoldedText, highlight: Highlight): TextSpan | null {
+function placeOne(
+  passage: FoldedText,
+  highlight: AnchoredText,
+): TextSpan | null {
   const needle = foldWhitespace(highlight.text.trim()).text;
   if (!needle) return null;
   const prefix = foldWhitespace(highlight.prefix_context).text;
@@ -122,7 +131,7 @@ function placeOne(passage: FoldedText, highlight: Highlight): TextSpan | null {
  */
 export function placeHighlights(
   text: string,
-  highlights: Highlight[],
+  highlights: AnchoredText[],
 ): PlacedHighlight[] {
   const passage = foldWhitespace(text);
   const placed: PlacedHighlight[] = [];
@@ -137,4 +146,30 @@ export function placeHighlights(
     placed.push({ id: highlight.id, ...span });
   }
   return placed.sort((left, right) => left.start - right.start);
+}
+
+export type MarkKind = "highlight" | "flag";
+
+export interface PlacedMark extends PlacedHighlight {
+  kind: MarkKind;
+}
+
+/**
+ * Highlights and writing flags, ready to mark. A flag wins where the two
+ * overlap, so a passage the reader just flagged always shows as flagged.
+ */
+export function combineMarks(
+  highlights: PlacedHighlight[],
+  flags: PlacedHighlight[],
+): PlacedMark[] {
+  const flagMarks = flags.map((span) => ({ ...span, kind: "flag" as const }));
+  const highlightMarks = highlights
+    .filter(
+      (span) =>
+        !flags.some((flag) => span.start < flag.end && span.end > flag.start),
+    )
+    .map((span) => ({ ...span, kind: "highlight" as const }));
+  return [...highlightMarks, ...flagMarks].sort(
+    (left, right) => left.start - right.start,
+  );
 }

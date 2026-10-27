@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 
 import {
   ApiError,
+  createWritingFlag,
   fetchChannelSummaries,
   setStoryRead,
   useTokenSource,
@@ -47,6 +48,20 @@ describe("api", () => {
     expect(new Headers(calls[0].init.headers).get("Content-Type")).toBe(
       "application/json",
     );
+  });
+
+  it("flags a passage with the reader's note", async () => {
+    const calls = stubFetch(Response.json({ id: "1" }, { status: 201 }));
+    const draft = {
+      text: "the half worth fearing more",
+      comment: "Invented ranking",
+      prefix_context: "breaches are ",
+      suffix_context: " because",
+    };
+    await createWritingFlag("v 1", draft);
+    expect(calls[0].url).toBe("/api/videos/v%201/writing-flags");
+    expect(calls[0].init.method).toBe("POST");
+    expect(JSON.parse(calls[0].init.body as string)).toEqual(draft);
   });
 
   it("turns failures into readable messages", async () => {

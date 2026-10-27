@@ -123,6 +123,10 @@ impl Modify for SecurityAddon {
         crate::handlers::highlights::list_video_highlights,
         crate::handlers::highlights::create_highlight,
         crate::handlers::highlights::delete_highlight,
+        crate::handlers::writing_flags::list_writing_flags,
+        crate::handlers::writing_flags::list_video_writing_flags,
+        crate::handlers::writing_flags::create_writing_flag,
+        crate::handlers::writing_flags::delete_writing_flag,
         crate::handlers::analytics::ingest_events
     ),
     modifiers(&SecurityAddon),

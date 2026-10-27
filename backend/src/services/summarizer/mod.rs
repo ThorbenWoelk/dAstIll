@@ -9,7 +9,7 @@ use thiserror::Error;
 use tokio::time::{Instant as TokioInstant, timeout};
 use tracing::Instrument;
 
-use crate::models::{AiStatus, VocabularyReplacement};
+use crate::models::{AiStatus, VocabularyReplacement, WritingFlag};
 use crate::services::http::is_provider_capacity_limited_message;
 use crate::services::ollama::{
     CLOUD_PROMPT_TIMEOUT_SECS, CooldownStatusPolicy, OllamaCore, OllamaPromptError,
@@ -18,6 +18,7 @@ use crate::services::ollama::{
 
 pub use output::SummaryOutputProblem;
 use output::{check_summary_output, clean_summary_output};
+pub use prompts::MAX_WRITING_FLAGS_IN_PROMPT;
 use prompts::{
     SUMMARY_PREAMBLE, TRANSCRIPT_CLEAN_PREAMBLE, build_clean_transcript_prompt,
     build_summary_prompt,
@@ -145,6 +146,7 @@ impl SummarizerService {
         video_id: &str,
         channel_id: &str,
         vocabulary_replacements: &[VocabularyReplacement],
+        writing_flags: &[WritingFlag],
     ) -> Result<(String, String), SummarizerError> {
         let span = logfire::span!(
             "summary.generate",
@@ -153,12 +155,18 @@ impl SummarizerService {
             transcript_chars = transcript.chars().count(),
             title_chars = video_title.chars().count(),
             vocabulary_replacements = vocabulary_replacements.len(),
+            writing_flags = writing_flags.len(),
         );
 
         async move {
             let started = TokioInstant::now();
             let word_count = count_transcript_words(transcript);
-            let prompt = build_summary_prompt(transcript, video_title, vocabulary_replacements);
+            let prompt = build_summary_prompt(
+                transcript,
+                video_title,
+                vocabulary_replacements,
+                writing_flags,
+            );
             let settings = TextPromptSettings {
                 timeout: summary_timeout(word_count),
                 local_context_tokens: Some(local_context_tokens(SUMMARY_PREAMBLE, &prompt)),

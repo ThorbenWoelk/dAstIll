@@ -8,7 +8,7 @@ use crate::cache_headers::add_cache_control;
 use crate::config::SecurityRuntimeConfig;
 use crate::handlers::{
     analytics, auth, catch_up, channels, chat, content, highlights, library, mini, preferences,
-    videos,
+    videos, writing_flags,
 };
 use crate::search::handler as search;
 use crate::security::{
@@ -265,6 +265,15 @@ pub fn build_app(
             get(highlights::list_video_highlights).post(highlights::create_highlight),
         )
         .route("/api/highlights/{id}", delete(highlights::delete_highlight))
+        .route("/api/writing-flags", get(writing_flags::list_writing_flags))
+        .route(
+            "/api/videos/{id}/writing-flags",
+            get(writing_flags::list_video_writing_flags).post(writing_flags::create_writing_flag),
+        )
+        .route(
+            "/api/writing-flags/{id}",
+            delete(writing_flags::delete_writing_flag),
+        )
         .route("/api/analytics/events", post(analytics::ingest_events))
         .layer(middleware::from_fn_with_state(
             state.clone(),

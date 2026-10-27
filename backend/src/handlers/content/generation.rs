@@ -732,6 +732,18 @@ fn summarizer_error_statuses(e: &SummarizerError) -> (StatusCode, ContentStatus)
     }
 }
 
+/// Passages readers flagged as bad writing, for the summary writer. A
+/// summary is still written when they cannot be loaded.
+async fn load_style_feedback(state: &AppState) -> Vec<crate::models::WritingFlag> {
+    match db::list_recent_writing_flags(&state.db, MAX_WRITING_FLAGS_IN_PROMPT).await {
+        Ok(flags) => flags,
+        Err(error) => {
+            tracing::warn!(error = %error, "could not load writing flags for the summary prompt");
+            Vec::new()
+        }
+    }
+}
+
 /// How `ensure_summary_internal` treats a summary that is already stored.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StoredSummaryUse {
@@ -847,6 +859,8 @@ async fn ensure_summary_internal(
     let normalized_transcript =
         apply_vocabulary_replacements(&transcript_text, &vocabulary_replacements);
 
+    let writing_flags = load_style_feedback(state).await;
+
     let summarize_result = state
         .summarizer
         .summarize(
@@ -855,6 +869,7 @@ async fn ensure_summary_internal(
             video_id,
             &video.channel_id,
             &vocabulary_replacements,
+            &writing_flags,
         )
         .await;
     let (content, model) = match summarize_result {

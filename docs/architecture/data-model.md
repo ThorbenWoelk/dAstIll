@@ -48,6 +48,7 @@ flowchart TB
 | Search sources                        | GCS     | Derived projection metadata                                |
 | Conversations                         | GCS     | Authenticated user chat history                            |
 | Highlights                            | GCS     | Authenticated user annotations                             |
+| Writing flags                         | GCS     | `writing-flags/{user_id}/`, style feedback for summaries   |
 | User preferences                      | libSQL  | `preferences` table keyed by `user_id`                     |
 | TTS statistics                        | libSQL  | `tts_stats` table global aggregate row                     |
 
@@ -111,6 +112,15 @@ Each highlight stores:
 - `created_at`
 
 Grouping highlights by route or view is API behavior, not storage ownership.
+
+## Writing flags
+
+Writing flags are passages of a summary that a signed-in reader marked as bad writing, stored under
+`writing-flags/{user_id}/{id}.json`. Each flag stores `id`, `video_id`, `text`, `comment`,
+`prefix_context`, `suffix_context`, and `created_at`.
+
+The summary writer reads the 20 newest flags from all readers and adds them to the summary prompt as
+style feedback. It reads only those 20 records.
 
 ## Chat Storage
 

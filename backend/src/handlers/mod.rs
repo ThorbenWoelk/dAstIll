@@ -10,6 +10,7 @@ pub mod mini;
 pub mod preferences;
 pub mod query;
 pub mod videos;
+pub mod writing_flags;
 
 use axum::http::StatusCode;
 

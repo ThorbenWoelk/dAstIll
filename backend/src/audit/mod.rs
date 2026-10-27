@@ -138,6 +138,27 @@ pub fn log_highlight_delete(user_id: &str, highlight_id: i64) {
     );
 }
 
+pub fn log_writing_flag_create(user_id: &str, video_id: &str, flag_id: i64) {
+    tracing::info!(
+        target: TARGET,
+        event = "writing_flag.create",
+        user_id = %user_id,
+        video_id = %video_id,
+        flag_id = flag_id,
+        "writing flag created"
+    );
+}
+
+pub fn log_writing_flag_delete(user_id: &str, flag_id: i64) {
+    tracing::info!(
+        target: TARGET,
+        event = "writing_flag.delete",
+        user_id = %user_id,
+        flag_id = flag_id,
+        "writing flag deleted"
+    );
+}
+
 pub fn log_chat_conversation_create(audit_scope: &str, conversation_id: &str, title_len: usize) {
     tracing::info!(
         target: TARGET,

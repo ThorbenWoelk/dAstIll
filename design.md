@@ -168,6 +168,14 @@ Summary markdown is model output. Always render it through `renderMarkdown` (`ma
 - Adding and removing are optimistic and roll back with a notice on failure.
 - Highlight ids are strings. They are larger than JavaScript's safe integers.
 
+### Writing flags
+
+- Next to **Highlight**, the selection toolbar offers **Flag writing** in the danger color. It opens `WritingFlagForm` in place of the toolbar: the passage quoted back, a required note, and **Flag writing** / **Cancel**.
+- A flag is anchored like a highlight and shows as a red wavy underline (`mark.writing-flag`). Where a flag and a highlight overlap, the flag shows.
+- Tapping a flag shows its note and **Remove flag**.
+- Profile lists the reader's flags (`WritingFeedbackList`) with **Open story** and **Remove**.
+- `StoryHighlights` and `StoryWritingFlags` share one optimistic state class (`src/lib/highlights/story-highlights.svelte.ts`).
+
 ---
 
 ## Mobile-First Patterns

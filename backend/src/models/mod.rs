@@ -881,6 +881,35 @@ pub struct HighlightVideoGroup {
     pub highlights: Vec<Highlight>,
 }
 
+/// A passage of a summary the reader flagged as bad writing, with a note on
+/// why. The summary writer reads recent flags as style feedback.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct WritingFlag {
+    /// Sent as a string: ids exceed JavaScript's safe integer range.
+    #[serde(with = "highlight_id")]
+    #[ts(type = "string")]
+    #[schema(value_type = String)]
+    pub id: i64,
+    pub video_id: String,
+    pub text: String,
+    pub comment: String,
+    pub prefix_context: String,
+    pub suffix_context: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, TS, ToSchema)]
+#[ts(export, export_to = "frontend/src/lib/bindings/")]
+pub struct CreateWritingFlagRequest {
+    pub text: String,
+    pub comment: String,
+    #[serde(default)]
+    pub prefix_context: String,
+    #[serde(default)]
+    pub suffix_context: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "frontend/src/lib/bindings/")]
 pub struct HighlightChannelGroup {

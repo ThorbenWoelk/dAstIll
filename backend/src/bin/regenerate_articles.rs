@@ -4,7 +4,7 @@ use std::path::Path;
 
 use dastill::{
     config::OllamaRuntimeConfig,
-    models::{Summary, Transcript, TranscriptRenderMode, VocabularyReplacement},
+    models::{Summary, Transcript, TranscriptRenderMode, VocabularyReplacement, WritingFlag},
     services::{OllamaCore, SummarizerService, SummaryEvaluatorService, TranscriptService},
 };
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,8 @@ struct ArticleRepair {
     refetch_captions: bool,
     #[serde(default)]
     vocabulary_replacements: Vec<VocabularyReplacement>,
+    #[serde(default)]
+    writing_flags: Vec<WritingFlag>,
 }
 
 #[derive(Serialize)]
@@ -115,6 +117,7 @@ async fn prepare_replacement(
             &repair.video_id,
             "repair",
             &repair.vocabulary_replacements,
+            &repair.writing_flags,
         )
         .await?;
     let evaluation = evaluator

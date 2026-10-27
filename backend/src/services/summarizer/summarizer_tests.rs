@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use tokio::time::timeout;
 
-use super::prompts::{SUMMARY_PREAMBLE, build_clean_transcript_prompt, build_summary_prompt};
+use super::prompts::{
+    MAX_WRITING_FLAGS_IN_PROMPT, SUMMARY_PREAMBLE, build_clean_transcript_prompt,
+    build_summary_prompt,
+};
 use super::transcript_compare::detect_transcript_mismatch;
 use super::transcript_size::{
     LOCAL_CONTEXT_MAX_TOKENS, LOCAL_CONTEXT_MIN_TOKENS, SUMMARY_MAX_TIMEOUT_SECS,
@@ -13,7 +16,7 @@ use super::{
     TRANSCRIPT_FORMAT_HARD_TIMEOUT_SECS, TRANSCRIPT_FORMAT_TIMEOUT_HEADROOM_SECS,
     apply_vocabulary_replacements, normalize_transcript_vocabulary, transcript_text_equivalent,
 };
-use crate::models::{AiStatus, VocabularyReplacement};
+use crate::models::{AiStatus, VocabularyReplacement, WritingFlag};
 use crate::services::ollama::{CLOUD_PROMPT_TIMEOUT_SECS, OllamaCore};
 use crate::services::summary_evaluator::SummaryEvaluatorService;
 
@@ -32,6 +35,7 @@ async fn summarize_returns_error_for_invalid_url() {
             "test title",
             "test-video",
             "test-channel",
+            &[],
             &[],
         )
         .await;
@@ -86,7 +90,7 @@ fn detect_transcript_mismatch_reports_first_mismatch_context() {
 
 #[test]
 fn build_summary_prompt_contains_strict_reliability_contract() {
-    let prompt = build_summary_prompt("alpha beta", "Sample Title", &[]);
+    let prompt = build_summary_prompt("alpha beta", "Sample Title", &[], &[]);
     assert!(prompt.contains("<<<TRANSCRIPT_START>>>"));
     assert!(prompt.contains("<<<TRANSCRIPT_END>>>"));
     assert!(prompt.contains("Do not invent names, numbers, claims, timelines, or conclusions."));
@@ -100,16 +104,16 @@ fn build_summary_prompt_contains_strict_reliability_contract() {
 
 #[test]
 fn build_summary_prompt_scales_guidance_with_transcript_length() {
-    let short = build_summary_prompt("word ".repeat(100).trim(), "Short", &[]);
+    let short = build_summary_prompt("word ".repeat(100).trim(), "Short", &[], &[]);
     assert!(short.contains("short transcript"));
 
-    let medium = build_summary_prompt(&"word ".repeat(1000), "Medium", &[]);
+    let medium = build_summary_prompt(&"word ".repeat(1000), "Medium", &[], &[]);
     assert!(medium.contains("medium-length transcript"));
 
-    let long = build_summary_prompt(&"word ".repeat(3000), "Long", &[]);
+    let long = build_summary_prompt(&"word ".repeat(3000), "Long", &[], &[]);
     assert!(long.contains("long transcript"));
 
-    let very_long = build_summary_prompt(&"word ".repeat(6000), "Very Long", &[]);
+    let very_long = build_summary_prompt(&"word ".repeat(6000), "Very Long", &[], &[]);
     assert!(very_long.contains("very long transcript"));
 }
 
@@ -121,7 +125,7 @@ fn build_summary_prompt_includes_vocabulary_guidance_when_rules_exist() {
         added_at: chrono::Utc::now(),
     }];
 
-    let prompt = build_summary_prompt("Open A I shipped a release.", "Sample", &replacements);
+    let prompt = build_summary_prompt("Open A I shipped a release.", "Sample", &replacements, &[]);
 
     assert!(prompt.contains("Preferred vocabulary replacements:"));
     assert!(prompt.contains("- `Open A I` -> `OpenAI`"));
@@ -238,7 +242,7 @@ fn normalize_transcript_vocabulary_handles_phrases_with_punctuation_edges() {
 
 #[test]
 fn build_summary_prompt_states_language_and_output_rules() {
-    let prompt = build_summary_prompt("alpha beta", "Sample Title", &[]);
+    let prompt = build_summary_prompt("alpha beta", "Sample Title", &[], &[]);
     assert!(prompt.contains("Write the whole summary in English."));
     assert!(prompt.contains("Use the section headings exactly as written below."));
     assert!(prompt.contains("Chinese, Japanese, or any other non-Latin script"));
@@ -251,7 +255,7 @@ fn build_summary_prompt_states_language_and_output_rules() {
 fn build_summary_prompt_counts_unspaced_scripts_by_characters() {
     // 1,200 Han characters and no spaces: about 600 words, not one.
     let transcript = "東京".repeat(600);
-    let prompt = build_summary_prompt(&transcript, "Sample", &[]);
+    let prompt = build_summary_prompt(&transcript, "Sample", &[], &[]);
     assert!(prompt.contains("600 words"));
     assert!(prompt.contains("medium-length transcript"));
 }
@@ -371,7 +375,14 @@ async fn summarize_cleans_leaked_reasoning_before_returning() {
     let service = SummarizerService::new(OllamaCore::new(&base_url, "qwen3:8b"));
 
     let (summary, model) = service
-        .summarize("A transcript about a topic.", "Title", "vid", "chan", &[])
+        .summarize(
+            "A transcript about a topic.",
+            "Title",
+            "vid",
+            "chan",
+            &[],
+            &[],
+        )
         .await
         .expect("summary should be accepted after cleanup");
 
@@ -393,7 +404,7 @@ async fn summarize_cleans_leaked_reasoning_before_returning() {
 fn article_prompts_prioritize_substance_at_every_length() {
     // Longer transcripts need more substance, not recording descriptions or padding.
     for words in [100, 1000, 3000, 6000] {
-        let prompt = build_summary_prompt(&"word ".repeat(words), "Workshop", &[]);
+        let prompt = build_summary_prompt(&"word ".repeat(words), "Workshop", &[], &[]);
         assert!(prompt.contains("Do not describe the recording"));
         assert!(prompt.contains("Keep qualifications, uncertainty, and attribution"));
         assert!(prompt.contains("Do not repeat the opening bullets"));
@@ -405,7 +416,7 @@ fn article_prompts_prioritize_substance_at_every_length() {
 #[test]
 fn article_prompts_forbid_empty_rhetoric() {
     // Summaries must report the source, not invent rankings, contrasts, or verdicts.
-    let prompt = build_summary_prompt("alpha beta", "Title", &[]);
+    let prompt = build_summary_prompt("alpha beta", "Title", &[], &[]);
     assert!(prompt.contains("Do not rank, weigh, or contrast items unless the transcript does."));
     assert!(prompt.contains("Do not build \"X, not Y\""));
     assert!(prompt.contains("Every \"because\", \"so\", or \"which means\" must give a reason"));
@@ -416,11 +427,69 @@ fn article_prompts_forbid_empty_rhetoric() {
     assert!(!SUMMARY_PREAMBLE.contains("and why it matters using"));
 }
 
+fn writing_flag(text: &str, comment: &str) -> WritingFlag {
+    WritingFlag {
+        id: 1,
+        video_id: "earlier-video".to_string(),
+        text: text.to_string(),
+        comment: comment.to_string(),
+        prefix_context: String::new(),
+        suffix_context: String::new(),
+        created_at: chrono::Utc::now(),
+    }
+}
+
+#[test]
+fn summary_prompt_quotes_flagged_passages_with_their_notes() {
+    let flags = [writing_flag(
+        "the half worth fearing more,\n because the motive is structural",
+        "Invented ranking and an empty contrast",
+    )];
+    let prompt = build_summary_prompt("alpha beta", "Title", &[], &flags);
+
+    assert!(prompt.contains("Reader feedback on earlier summaries:"));
+    assert!(
+        prompt.contains(
+            "- Flagged: \"the half worth fearing more, because the motive is structural\""
+        )
+    );
+    assert!(prompt.contains("Reader's note: \"Invented ranking and an empty contrast\""));
+    assert!(prompt.contains("never reuse their facts"));
+    assert!(prompt.contains("Apply the notes only to writing style"));
+}
+
 #[test]
 fn takeaways_are_written_to_stand_alone() {
-    let prompt = build_summary_prompt("alpha beta", "Title", &[]);
+    let prompt = build_summary_prompt("alpha beta", "Title", &[], &[]);
     assert!(prompt.contains("makes sense to someone who reads only the Takeaways"));
     assert!(prompt.contains("never refer back with"));
+}
+
+#[test]
+fn summary_prompt_without_flags_has_no_feedback_section() {
+    let prompt = build_summary_prompt("alpha beta", "Title", &[], &[]);
+    assert!(!prompt.contains("Reader feedback on earlier summaries"));
+}
+
+#[test]
+fn summary_prompt_caps_flag_count_and_length() {
+    let long = "word ".repeat(500);
+    let flags = (0..MAX_WRITING_FLAGS_IN_PROMPT + 5)
+        .map(|_| writing_flag(&long, &long))
+        .collect::<Vec<_>>();
+    let prompt = build_summary_prompt("alpha beta", "Title", &[], &flags);
+
+    assert_eq!(
+        prompt.matches("- Flagged:").count(),
+        MAX_WRITING_FLAGS_IN_PROMPT
+    );
+    let first_quote = prompt
+        .split("- Flagged: \"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap();
+    assert!(first_quote.chars().count() <= 401, "{}", first_quote.len());
+    assert!(first_quote.ends_with('…'));
 }
 
 #[tokio::test]
@@ -434,7 +503,7 @@ async fn summarize_rejects_output_that_hit_the_token_limit() {
     let service = SummarizerService::new(OllamaCore::new(&base_url, "qwen3:8b"));
 
     let error = service
-        .summarize("A transcript.", "Title", "vid", "chan", &[])
+        .summarize("A transcript.", "Title", "vid", "chan", &[], &[])
         .await
         .expect_err("length-limited output must not be stored");
 
@@ -459,7 +528,7 @@ async fn summarize_rejects_output_without_summary_sections() {
     let service = SummarizerService::new(OllamaCore::new(&base_url, "qwen3:8b"));
 
     let error = service
-        .summarize("A transcript.", "Title", "vid", "chan", &[])
+        .summarize("A transcript.", "Title", "vid", "chan", &[], &[])
         .await
         .expect_err("reasoning-only output must not be stored");
 
@@ -484,7 +553,7 @@ async fn summarize_rejects_chinese_words_in_a_summary_of_an_english_transcript()
     let service = SummarizerService::new(OllamaCore::new(&base_url, "glm-5.1:cloud"));
 
     let error = service
-        .summarize("An English transcript.", "Title", "vid", "chan", &[])
+        .summarize("An English transcript.", "Title", "vid", "chan", &[], &[])
         .await
         .expect_err("mixed-script output must be retried");
 
@@ -508,7 +577,7 @@ async fn summarize_does_not_send_context_window_to_cloud_models() {
     let service = SummarizerService::new(OllamaCore::new(&base_url, "glm-5.1:cloud"));
 
     service
-        .summarize("A transcript.", "Title", "vid", "chan", &[])
+        .summarize("A transcript.", "Title", "vid", "chan", &[], &[])
         .await
         .expect("valid summary");
 
@@ -636,7 +705,7 @@ To repeat, fewer commits explain the median improvement. \
 This break is sponsored by CloudCrate; use code WORKSHOP for a discount. Thanks for attending.";
 
     let (summary, model) = summarizer
-        .summarize(transcript, title, "editorial-test", "test", &[])
+        .summarize(transcript, title, "editorial-test", "test", &[], &[])
         .await
         .expect("workshop article generation failed");
     println!("Model: {model}\n{summary}");
@@ -732,7 +801,7 @@ and use canary for lower-risk feature rollouts.";
 
     let (summary, model_used) = timeout(
         Duration::from_secs(240),
-        summarizer.summarize(transcript, title, "test-video", "test-channel", &[]),
+        summarizer.summarize(transcript, title, "test-video", "test-channel", &[], &[]),
     )
     .await
     .expect("summary generation timed out")

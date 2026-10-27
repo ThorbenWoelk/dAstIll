@@ -18,6 +18,7 @@ mod tts_stats;
 mod user_scope;
 mod video_info;
 mod videos;
+mod writing_flags;
 
 pub(crate) use crate::read_cache::ReadCache;
 
@@ -42,6 +43,7 @@ pub use tts_stats::*;
 pub use user_scope::*;
 pub use video_info::*;
 pub use videos::*;
+pub use writing_flags::*;
 
 use crate::models::{Channel, Video};
 use crate::object_store::ObjectStore;

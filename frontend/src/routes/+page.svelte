@@ -13,7 +13,10 @@
   import StoryMargin from "$lib/components/StoryMargin.svelte";
   import StoryPager from "$lib/components/StoryPager.svelte";
   import { EditionReader } from "$lib/edition/reader.svelte";
-  import { StoryHighlights } from "$lib/highlights/story-highlights.svelte";
+  import {
+    StoryHighlights,
+    StoryWritingFlags,
+  } from "$lib/highlights/story-highlights.svelte";
   import {
     describeStoriesLeft,
     FRONT_PAGE,
@@ -26,6 +29,7 @@
   // The layout renders this page only for a signed-in reader.
   const reader = new EditionReader(session.reader?.uid ?? "unknown");
   const highlights = new StoryHighlights();
+  const flags = new StoryWritingFlags();
   /** How the next lead story arrives on the page. */
   let entrance = $state<"print" | TurnDirection>("print");
   /**
@@ -40,7 +44,9 @@
 
   $effect(() => {
     const storyId = reader.lead?.id;
-    if (storyId) void highlights.show(storyId);
+    if (!storyId) return;
+    void highlights.show(storyId);
+    void flags.show(storyId);
   });
 
   function backToTop() {
@@ -177,6 +183,9 @@
     onDismiss={() => highlights.dismissError()}
   />
 {/if}
+{#if flags.error}
+  <EditionNotice message={flags.error} onDismiss={() => flags.dismissError()} />
+{/if}
 
 {#if reader.status === "loading"}
   <p class="state" aria-live="polite">Printing today's edition…</p>
@@ -244,8 +253,11 @@
             story={reader.lead}
             {entrance}
             highlights={highlights.items}
+            flags={flags.items}
             onHighlight={(draft) => highlights.add(lead.id, draft)}
             onRemoveHighlight={(id) => highlights.remove(lead.id, id)}
+            onFlag={(draft) => flags.add(lead.id, draft)}
+            onRemoveFlag={(id) => flags.remove(lead.id, id)}
           >
             {#snippet footer()}
               <ReadBar

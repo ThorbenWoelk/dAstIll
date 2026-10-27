@@ -2,13 +2,17 @@ import type { Channel } from "$lib/bindings/Channel";
 import type { CreateHighlightRequest } from "$lib/bindings/CreateHighlightRequest";
 import type { Highlight } from "$lib/bindings/Highlight";
 import type { HighlightChannelGroup } from "$lib/bindings/HighlightChannelGroup";
+import type { CreateWritingFlagRequest } from "$lib/bindings/CreateWritingFlagRequest";
+import type { WritingFlag } from "$lib/bindings/WritingFlag";
 import { API_BASE } from "$lib/config";
 
 export type {
   Channel,
   CreateHighlightRequest,
+  CreateWritingFlagRequest,
   Highlight,
   HighlightChannelGroup,
+  WritingFlag,
 };
 
 /** One summarized video as returned by `GET /api/mini`. */
@@ -159,6 +163,34 @@ export function listHighlights() {
 
 export function deleteHighlight(highlightId: string) {
   return request<void>(`/api/highlights/${encodeURIComponent(highlightId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function listStoryWritingFlags(videoId: string) {
+  return request<WritingFlag[]>(
+    `/api/videos/${encodeURIComponent(videoId)}/writing-flags`,
+  );
+}
+
+/** Flags a passage as bad writing. The summary writer learns from the note. */
+export function createWritingFlag(
+  videoId: string,
+  draft: CreateWritingFlagRequest,
+) {
+  return request<WritingFlag>(
+    `/api/videos/${encodeURIComponent(videoId)}/writing-flags`,
+    { method: "POST", body: JSON.stringify(draft) },
+  );
+}
+
+/** Every passage the reader flagged, newest first. */
+export function listWritingFlags() {
+  return request<WritingFlag[]>("/api/writing-flags");
+}
+
+export function deleteWritingFlag(flagId: string) {
+  return request<void>(`/api/writing-flags/${encodeURIComponent(flagId)}`, {
     method: "DELETE",
   });
 }

@@ -17,7 +17,8 @@ use crate::models::{
 use crate::search::SearchSourceKind;
 use crate::search::hash_search_content;
 use crate::services::summarizer::{
-    MAX_TRANSCRIPT_FORMAT_ATTEMPTS, SummarizerError, apply_vocabulary_replacements,
+    MAX_TRANSCRIPT_FORMAT_ATTEMPTS, MAX_WRITING_FLAGS_IN_PROMPT, SummarizerError,
+    apply_vocabulary_replacements,
 };
 use crate::services::youtube::placeholder::is_site_wide_placeholder_description;
 use crate::state::AppState;

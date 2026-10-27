@@ -14,7 +14,7 @@ fn highlight_key(user_id: &str, id: i64) -> String {
     format!("{}{id}.json", highlight_prefix(user_id))
 }
 
-fn generate_highlight_id() -> i64 {
+pub(super) fn generate_highlight_id() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)

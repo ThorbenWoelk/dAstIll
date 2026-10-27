@@ -11,7 +11,10 @@
     type Story,
     type TurnDirection,
   } from "$lib/edition/stories";
-  import { StoryHighlights } from "$lib/highlights/story-highlights.svelte";
+  import {
+    StoryHighlights,
+    StoryWritingFlags,
+  } from "$lib/highlights/story-highlights.svelte";
   import { describeWayBack } from "$lib/navigation/pages";
   import { storySwipe } from "$lib/navigation/story-swipe";
 
@@ -19,6 +22,7 @@
 
   const storyId = $derived(page.params.id ?? "");
   const highlights = new StoryHighlights();
+  const flags = new StoryWritingFlags();
 
   let story = $state.raw<Story | null>(null);
   let read = $state(false);
@@ -82,6 +86,7 @@
     const id = storyId;
     void load(id);
     void highlights.show(id);
+    void flags.show(id);
   });
 
   async function setRead(next: boolean) {
@@ -113,6 +118,9 @@
     message={highlights.error}
     onDismiss={() => highlights.dismissError()}
   />
+{/if}
+{#if flags.error}
+  <EditionNotice message={flags.error} onDismiss={() => flags.dismissError()} />
 {/if}
 
 {#if status === "loading"}
@@ -160,8 +168,11 @@
         {story}
         entrance={arrival}
         highlights={highlights.items}
+        flags={flags.items}
         onHighlight={(draft) => highlights.add(storyId, draft)}
         onRemoveHighlight={(id) => highlights.remove(storyId, id)}
+        onFlag={(draft) => flags.add(storyId, draft)}
+        onRemoveFlag={(id) => flags.remove(storyId, id)}
       >
         {#snippet footer()}
           <div class="read-state">

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Masthead from "$lib/components/Masthead.svelte";
+  import WritingFeedbackList from "$lib/components/WritingFeedbackList.svelte";
   import { forgetEdition } from "$lib/edition/keepsake";
   import { session } from "$lib/session.svelte";
   import {
@@ -193,6 +194,8 @@
       </ul>
     {/if}
   </section>
+
+  <WritingFeedbackList />
 
   <section class="part" aria-labelledby="account-heading">
     <h2 id="account-heading" class="label part-heading">Account</h2>
