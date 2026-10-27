@@ -112,6 +112,36 @@ test.describe("wide screen", () => {
     await expect(leadOnFrontPage(page)).toBeVisible();
   });
 
+  test("leaving the opened story and coming back keeps that story", async ({
+    page,
+  }) => {
+    await openPaper(page, { channels: CHANNELS, stories: EDITION });
+    await page.getByRole("button", { name: /How tides keep time/ }).click();
+    await expect(headline(page)).toHaveText("How tides keep time");
+
+    await page.getByRole("link", { name: "Highlights" }).click();
+    await expect(page).toHaveURL(/\/highlights$/);
+    await page.goBack();
+
+    await expect(headline(page)).toHaveText("How tides keep time");
+    await expect(leadOnFrontPage(page)).toBeHidden();
+  });
+
+  test("coming back after marking the opened story read shows the story that took its place", async ({
+    page,
+  }) => {
+    await openPaper(page, { channels: CHANNELS, stories: EDITION });
+    await page.getByRole("button", { name: /How tides keep time/ }).click();
+    await page.getByRole("button", { name: "Mark as read" }).click();
+    await expect(headline(page)).toHaveText("Deleting code on purpose");
+
+    await page.getByRole("link", { name: "Highlights" }).click();
+    await expect(page).toHaveURL(/\/highlights$/);
+    await page.goBack();
+
+    await expect(headline(page)).toHaveText("Deleting code on purpose");
+  });
+
   test("the margin lists the story's highlights and removes them", async ({
     page,
   }) => {

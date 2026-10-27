@@ -190,7 +190,7 @@ Breakpoints change layout, never behavior. Do not branch on viewport width in Ja
 ### Front page grid
 
 - From 1360px the front page opens on the grid and hides the reader. Narrower screens hide the grid and show the reader, as before. Both are rendered from the same `EditionReader` state; CSS picks which one shows.
-- Picking a story on the grid makes it the lead and adds a shallow history entry (`pushState`, `page.state.storyOpen`). "‹ Front page" and the browser's Back both return to the grid.
+- Picking a story on the grid makes it the lead and adds a shallow history entry (`pushState`, `page.state.storyOpen` and `storyId`). Leaving the page and coming back opens that same story. "‹ Front page" and the browser's Back both return to the grid.
 - In the opened story, marking it read brings the next story up in place, as on narrower screens. The keyboard shortcuts work on the grid too: `R` marks the grid's lead read, and `J`/`K` change which story leads.
 - The margin's "In this story" entries are buttons that scroll to the section, not hash links, so they never leave the opened story.
 

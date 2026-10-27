@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { pushState } from "$app/navigation";
+  import { pushState, replaceState } from "$app/navigation";
   import { page } from "$app/state";
   import AlsoInEdition from "$lib/components/AlsoInEdition.svelte";
   import EditionNotice from "$lib/components/EditionNotice.svelte";
@@ -34,9 +34,24 @@
    */
   const storyOpen = $derived(page.state.storyOpen === true);
 
+  // History keeps the open story. A new reader (after Highlights, Finished,
+  // or Profile) would otherwise lead with the newest story.
+  const restoredStoryId =
+    page.state.storyOpen === true ? page.state.storyId : undefined;
+  if (restoredStoryId) reader.pick(restoredStoryId);
+
   onMount(() => {
     void reader.refresh();
   });
+
+  /** Keep the shallow history entry pointed at the story on screen. */
+  function rememberOpenStory(storyId: string | null) {
+    if (page.route.id !== "/" || page.state.storyOpen !== true || !storyId) {
+      return;
+    }
+    if (page.state.storyId === storyId) return;
+    replaceState("", { storyOpen: true, storyId });
+  }
 
   $effect(() => {
     const storyId = reader.lead?.id;
@@ -50,18 +65,21 @@
   function markAsRead() {
     entrance = "print";
     void reader.markLeadRead();
+    rememberOpenStory(reader.lead?.id ?? null);
     backToTop();
   }
 
   function undoLastRead() {
     entrance = "print";
     void reader.undoLastRead();
+    rememberOpenStory(reader.lead?.id ?? null);
     backToTop();
   }
 
   function pickStory(storyId: string) {
     entrance = "print";
     reader.pick(storyId);
+    rememberOpenStory(storyId);
     backToTop();
   }
 
@@ -69,7 +87,11 @@
   function openStory(storyId: string) {
     entrance = "print";
     reader.pick(storyId);
-    pushState("", { storyOpen: true });
+    if (page.state.storyOpen === true) {
+      replaceState("", { storyOpen: true, storyId });
+    } else {
+      pushState("", { storyOpen: true, storyId });
+    }
     backToTop();
   }
 
@@ -81,12 +103,14 @@
   function turn(direction: TurnDirection) {
     if (!reader.turn(direction)) return;
     entrance = direction;
+    rememberOpenStory(reader.lead?.id ?? null);
     backToTop();
   }
 
   function chooseSection(section: SectionId) {
     entrance = "print";
     reader.showSection(section);
+    rememberOpenStory(reader.lead?.id ?? null);
     backToTop();
   }
 
