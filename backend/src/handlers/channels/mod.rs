@@ -99,6 +99,51 @@ async fn delete_channel_with_search_cleanup(
         .map_err(|err| err.to_string())
 }
 
+async fn channel_already_stored(
+    state: &AppState,
+    channel_id: &str,
+) -> Result<bool, (StatusCode, String)> {
+    Ok(db::get_canonical_channel(&state.db, channel_id)
+        .await
+        .map_err(map_db_err)?
+        .is_some())
+}
+
+/// A failed sync removes a channel this request just created.
+/// A channel that was already stored keeps its videos, transcripts, summaries, and highlights.
+fn should_roll_back_new_channel(channel_already_stored: bool) -> bool {
+    !channel_already_stored
+}
+
+async fn store_synced_source(
+    state: &AppState,
+    user_id: &str,
+    profile: SourceProfileRecord,
+    added_at: chrono::DateTime<Utc>,
+    input_len: usize,
+) -> Result<Channel, (StatusCode, String)> {
+    let already_stored = channel_already_stored(state, &profile.source.id).await?;
+    let channel = persist_source_profile_and_channel(&state.db, &profile)
+        .await
+        .map_err(map_db_err)?;
+    if let Err(err) = sync_source_profile(state, &profile).await {
+        if should_roll_back_new_channel(already_stored) {
+            let _ = delete_channel_with_search_cleanup(state, &channel.id).await;
+        }
+        return Err((StatusCode::BAD_GATEWAY, err));
+    }
+    let channel = Channel {
+        added_at,
+        ..channel
+    };
+    db::save_user_channel(&state.db, user_id, &channel)
+        .await
+        .map_err(map_db_err)?;
+    audit::log_channel_subscribe(user_id, &channel, input_len);
+    state.read_cache.evict_channel(&channel.id).await;
+    Ok(channel)
+}
+
 async fn source_profile_for_channel(
     store: &db::Store,
     channel: &Channel,
@@ -444,25 +489,7 @@ pub async fn add_channel(
                 container: resolved.container,
                 openalex_query: Some(structured_query),
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
-            db::save_user_channel(
-                &state.db,
-                user_id,
-                &Channel {
-                    added_at: now,
-                    ..channel.clone()
-                },
-            )
-            .await
-            .map_err(map_db_err)?;
-            audit::log_channel_subscribe(user_id, &channel, input.len());
-            state.read_cache.evict_channel(&channel.id).await;
+            let channel = store_synced_source(&state, user_id, profile, now, input.len()).await?;
             Ok((StatusCode::CREATED, Json(channel)))
         }
         AddSourceIntent::PodcastFeed(feed_url) => {
@@ -485,25 +512,7 @@ pub async fn add_channel(
                     }
                 }
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
-            db::save_user_channel(
-                &state.db,
-                user_id,
-                &Channel {
-                    added_at: now,
-                    ..channel.clone()
-                },
-            )
-            .await
-            .map_err(map_db_err)?;
-            audit::log_channel_subscribe(user_id, &channel, input.len());
-            state.read_cache.evict_channel(&channel.id).await;
+            let channel = store_synced_source(&state, user_id, profile, now, input.len()).await?;
             Ok((StatusCode::CREATED, Json(channel)))
         }
         AddSourceIntent::WebsitePage(url) => {
@@ -517,25 +526,7 @@ pub async fn add_channel(
                 container: material.container,
                 openalex_query: None,
             };
-            let channel = persist_source_profile_and_channel(&state.db, &profile)
-                .await
-                .map_err(map_db_err)?;
-            if let Err(err) = sync_source_profile(&state, &profile).await {
-                let _ = delete_channel_with_search_cleanup(&state, &channel.id).await;
-                return Err((StatusCode::BAD_GATEWAY, err));
-            }
-            db::save_user_channel(
-                &state.db,
-                user_id,
-                &Channel {
-                    added_at: now,
-                    ..channel.clone()
-                },
-            )
-            .await
-            .map_err(map_db_err)?;
-            audit::log_channel_subscribe(user_id, &channel, input.len());
-            state.read_cache.evict_channel(&channel.id).await;
+            let channel = store_synced_source(&state, user_id, profile, now, input.len()).await?;
             Ok((StatusCode::CREATED, Json(channel)))
         }
     }
