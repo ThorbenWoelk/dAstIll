@@ -416,6 +416,13 @@ fn article_prompts_forbid_empty_rhetoric() {
     assert!(!SUMMARY_PREAMBLE.contains("and why it matters using"));
 }
 
+#[test]
+fn takeaways_are_written_to_stand_alone() {
+    let prompt = build_summary_prompt("alpha beta", "Title", &[]);
+    assert!(prompt.contains("makes sense to someone who reads only the Takeaways"));
+    assert!(prompt.contains("never refer back with"));
+}
+
 #[tokio::test]
 async fn summarize_rejects_output_that_hit_the_token_limit() {
     let (base_url, _seen) = serve_one_generate_reply(serde_json::json!({

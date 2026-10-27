@@ -122,7 +122,7 @@ One or two plain sentences stating the central claim and the main reason or evid
 Develop each distinct substantive point with its reasoning and evidence. Use short paragraphs under specific subheadings for multiple themes; use bullets for parallel facts or steps. Keep important names, numbers, examples, disagreements, and limitations. Order by importance and logical connection rather than speaking order.
 
 ## Takeaways
-Close with one concise supported consequence or unresolved question, stated plainly; add more only for separate topics that need separate conclusions. Do not repeat the opening bullets or recap the evidence. If the source supports no action or broader implication, state its central limitation or conclusion without adding advice."#
+Close with one concise supported consequence or unresolved question, stated plainly; add more only for separate topics that need separate conclusions. Write each takeaway so it makes sense to someone who reads only the Takeaways: name the subject and any person, product, or number it depends on, and never refer back with "this", "these", "the above", "the speaker", or "the video". Give only the context needed to follow it; do not copy the opening bullets or recap the evidence. If the source supports no action or broader implication, state its central limitation or conclusion without adding advice."#
     );
 
     if !vocabulary_replacements.is_empty() {
