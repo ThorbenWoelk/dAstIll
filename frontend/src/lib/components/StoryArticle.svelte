@@ -2,7 +2,7 @@
   import type { Snippet } from "svelte";
   import type { CreateHighlightRequest, Highlight } from "$lib/api";
   import ExternalLinkIcon from "$lib/components/icons/ExternalLinkIcon.svelte";
-  import HighlightIcon from "$lib/components/icons/HighlightIcon.svelte";
+  import HighlightPassage from "$lib/components/HighlightPassage.svelte";
   import StorySection from "$lib/components/StorySection.svelte";
   import { renderMarkdown } from "$lib/edition/markdown";
   import {
@@ -17,17 +17,6 @@
     type TurnDirection,
   } from "$lib/edition/stories";
   import { splitSummary } from "$lib/edition/summary";
-  import {
-    buildHighlightDraft,
-    placeHighlights,
-  } from "$lib/highlights/anchoring";
-  import {
-    clearHighlightMarks,
-    highlightIdAt,
-    markHighlights,
-    readPassage,
-    spanOfRange,
-  } from "$lib/highlights/passage";
 
   let {
     story,
@@ -47,8 +36,6 @@
     onRemoveHighlight?: (highlightId: string) => void;
   } = $props();
 
-  const TOOLBAR_HALF_WIDTH = 90;
-
   const parts = $derived(splitSummary(story.summary));
   const glanceHtml = $derived(renderMarkdown(parts.glance));
   const sections = $derived(
@@ -59,205 +46,60 @@
   );
   const releaseDay = $derived(describeReleaseDay(story.publishedAt));
   const minutes = $derived(readingMinutes(story.summary));
-
-  let article = $state<HTMLElement | null>(null);
-  /** The selection the reader may turn into a highlight. */
-  let selection = $state<{
-    draft: CreateHighlightRequest;
-    top: number;
-    left: number;
-  } | null>(null);
-  /** The highlight the reader tapped, offered for removal. */
-  let tapped = $state<{ id: string; top: number; left: number } | null>(null);
-
-  $effect(() => {
-    const root = article;
-    const current = highlights;
-    if (!root) return;
-    clearHighlightMarks(root);
-    const passage = readPassage(root);
-    markHighlights(passage, placeHighlights(passage.text, current));
-  });
-
-  $effect(() => {
-    if (tapped && !highlights.some((h) => h.id === tapped?.id)) tapped = null;
-  });
-
-  /** Position for a toolbar just below `rect`, inside the article. */
-  function below(rect: DOMRect) {
-    const box = article!.getBoundingClientRect();
-    const half = Math.min(TOOLBAR_HALF_WIDTH, box.width / 2);
-    const center = rect.left + rect.width / 2 - box.left;
-    return {
-      top: rect.bottom - box.top + 8,
-      left: Math.min(Math.max(center, half), box.width - half),
-    };
-  }
-
-  /**
-   * On phones a tap clears the text selection before the click arrives.
-   * While the Highlight button is pressed, keep it and its draft on screen.
-   */
-  let pressingToolbar = false;
-  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function pressToolbar(event: PointerEvent) {
-    event.preventDefault();
-    clearTimeout(releaseTimer);
-    pressingToolbar = true;
-  }
-
-  function releaseToolbar() {
-    clearTimeout(releaseTimer);
-    // The click follows pointerup; resync only if it never comes.
-    releaseTimer = setTimeout(() => {
-      pressingToolbar = false;
-      readSelection();
-    }, 400);
-  }
-
-  function readSelection() {
-    if (!onHighlight || !article || pressingToolbar) return;
-    const current = document.getSelection();
-    if (!current || current.isCollapsed || current.rangeCount === 0) {
-      selection = null;
-      return;
-    }
-    const range = current.getRangeAt(0);
-    const passage = readPassage(article);
-    const span = spanOfRange(passage, article, range);
-    const draft = span
-      ? buildHighlightDraft(passage.text, span.start, span.end)
-      : null;
-    if (!draft) {
-      selection = null;
-      return;
-    }
-    tapped = null;
-    selection = { draft, ...below(range.getBoundingClientRect()) };
-  }
-
-  function highlightSelection() {
-    clearTimeout(releaseTimer);
-    pressingToolbar = false;
-    if (!selection || !onHighlight) return;
-    onHighlight(selection.draft);
-    document.getSelection()?.removeAllRanges();
-    selection = null;
-  }
-
-  function handleClick(event: MouseEvent) {
-    if (!onRemoveHighlight) return;
-    const id = highlightIdAt(event.target);
-    if (!id || !document.getSelection()?.isCollapsed) {
-      tapped = null;
-      return;
-    }
-    const mark = (event.target as Element).closest("mark")!;
-    tapped = { id, ...below(mark.getBoundingClientRect()) };
-  }
-
-  function removeTapped() {
-    if (!tapped || !onRemoveHighlight) return;
-    onRemoveHighlight(tapped.id);
-    tapped = null;
-  }
-
-  function handleKey(event: KeyboardEvent) {
-    if (event.key === "Escape") {
-      selection = null;
-      tapped = null;
-    }
-  }
 </script>
 
-<svelte:document onselectionchange={readSelection} onkeydown={handleKey} />
-
 {#key story.id}
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <article
     class={["story", entrance === "print" ? "print-in" : `turn-in-${entrance}`]}
     aria-labelledby="story-headline"
-    bind:this={article}
-    onclick={handleClick}
   >
-    <p class="label kicker" data-passage-skip>{story.channelName}</p>
-    <h1 id="story-headline" data-passage-skip>{story.title}</h1>
-    {#if parts.standfirst}
-      <p class="standfirst">{parts.standfirst}</p>
-    {/if}
-    <p class="byline" data-passage-skip>
-      {#if releaseDay}<span>{releaseDay}</span>{/if}
-      <span>{minutes} min read</span>
-      <a href={story.watchUrl} target="_blank" rel="noopener noreferrer">
-        Watch the video <ExternalLinkIcon />
-      </a>
-    </p>
+    <HighlightPassage {highlights} {onHighlight} {onRemoveHighlight}>
+      <p class="label kicker" data-passage-skip>{story.channelName}</p>
+      <h1 id="story-headline" data-passage-skip>{story.title}</h1>
+      {#if parts.standfirst}
+        <p class="standfirst">{parts.standfirst}</p>
+      {/if}
+      <p class="byline" data-passage-skip>
+        {#if releaseDay}<span>{releaseDay}</span>{/if}
+        <span>{minutes} min read</span>
+        <a href={story.watchUrl} target="_blank" rel="noopener noreferrer">
+          Watch the video <ExternalLinkIcon />
+        </a>
+      </p>
 
-    {#if glanceHtml}
-      <aside class="glance" aria-labelledby="glance-heading">
-        <StorySection
-          title="At a glance"
-          headingId="glance-heading"
-          anchorId={GLANCE_PART_ID}
-          passageSkip
-        >
-          <div class="glance-list">{@html glanceHtml}</div>
-        </StorySection>
-      </aside>
-    {/if}
-
-    <div class="body">
-      {#each sections as section, index (index)}
-        {#if section.title === null}
-          <div class={["text", index === 0 && "lead-text"]}>
-            {@html section.html}
-          </div>
-        {:else}
+      {#if glanceHtml}
+        <aside class="glance" aria-labelledby="glance-heading">
           <StorySection
-            title={section.title}
-            level={section.level}
-            anchorId={storyPartId(index)}
+            title="At a glance"
+            headingId="glance-heading"
+            anchorId={GLANCE_PART_ID}
+            passageSkip
           >
+            <div class="glance-list">{@html glanceHtml}</div>
+          </StorySection>
+        </aside>
+      {/if}
+
+      <div class="body">
+        {#each sections as section, index (index)}
+          {#if section.title === null}
             <div class={["text", index === 0 && "lead-text"]}>
               {@html section.html}
             </div>
-          </StorySection>
-        {/if}
-      {/each}
-    </div>
-
-    {#if selection}
-      <div
-        class="toolbar"
-        style:top="{selection.top}px"
-        style:left="{selection.left}px"
-        data-passage-skip
-      >
-        <button
-          type="button"
-          class="press"
-          onpointerdown={pressToolbar}
-          onpointerup={releaseToolbar}
-          onpointercancel={releaseToolbar}
-          onclick={highlightSelection}
-        >
-          <HighlightIcon />
-          Highlight
-        </button>
+          {:else}
+            <StorySection
+              title={section.title}
+              level={section.level}
+              anchorId={storyPartId(index)}
+            >
+              <div class={["text", index === 0 && "lead-text"]}>
+                {@html section.html}
+              </div>
+            </StorySection>
+          {/if}
+        {/each}
       </div>
-    {:else if tapped}
-      <div
-        class="toolbar"
-        style:top="{tapped.top}px"
-        style:left="{tapped.left}px"
-        data-passage-skip
-      >
-        <button type="button" class="press" onclick={removeTapped}>
-          Remove highlight
-        </button>
-      </div>
-    {/if}
+    </HighlightPassage>
 
     <div class="footer" data-passage-skip>
       {@render footer?.()}
@@ -267,34 +109,12 @@
 
 <style>
   .story {
-    position: relative;
     padding-top: var(--space-5);
-  }
-
-  .story :global(mark.reader-highlight) {
-    padding: 0.05em 0;
-    background: var(--marker);
-    color: inherit;
-    cursor: pointer;
-    box-decoration-break: clone;
-    -webkit-box-decoration-break: clone;
   }
 
   /* No box of its own, so a sticky read bar still sticks to the article. */
   .footer {
     display: contents;
-  }
-
-  .toolbar {
-    position: absolute;
-    z-index: 2;
-    transform: translateX(-50%);
-  }
-
-  .toolbar .press {
-    min-height: var(--touch);
-    padding: 0 var(--space-4);
-    font-size: 12px;
   }
 
   .kicker {

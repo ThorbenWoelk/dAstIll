@@ -202,9 +202,12 @@
         stories={reader.visible}
         {lead}
         undoTitle={reader.lastRead?.title ?? null}
+        highlights={highlights.items}
         onOpen={openStory}
         onRead={markAsRead}
         onUndo={undoLastRead}
+        onHighlight={(draft) => highlights.add(lead.id, draft)}
+        onRemoveHighlight={(id) => highlights.remove(lead.id, id)}
       />
     </div>
     <div class="spread">

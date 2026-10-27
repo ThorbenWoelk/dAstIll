@@ -148,6 +148,39 @@ test.describe("wide screen", () => {
       .toEqual(["90071992547409931"]);
   });
 
+  test("the grid's lead can be highlighted, and the story keeps it", async ({
+    page,
+  }) => {
+    const backend = await openPaper(page, {
+      channels: CHANNELS,
+      stories: EDITION,
+    });
+    const lead = page.locator(".front-page .lead");
+    await lead
+      .getByText(/^Standfirst for Why/)
+      .dblclick({ position: { x: 20, y: 10 } });
+    await page.getByRole("button", { name: "Highlight", exact: true }).click();
+
+    await expect(lead.locator("mark.reader-highlight")).toHaveText([
+      "Standfirst",
+    ]);
+    await expect.poll(() => backend.highlights.length).toBe(1);
+    expect(backend.highlights[0]).toMatchObject({
+      video_id: "v-new",
+      text: "Standfirst",
+    });
+
+    await page.getByRole("button", { name: "Read the story" }).click();
+    await expect(
+      page.getByRole("article").locator("mark.reader-highlight"),
+    ).toHaveText(["Standfirst"]);
+    await expect(
+      page
+        .getByRole("complementary", { name: "In the margin" })
+        .locator("mark"),
+    ).toHaveText(["Standfirst"]);
+  });
+
   test("marking the grid's lead read brings the next story up", async ({
     page,
   }) => {

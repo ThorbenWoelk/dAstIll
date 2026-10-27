@@ -21,8 +21,11 @@
   }
 
   function showHighlight(highlightId: string) {
+    // The front page grid marks the same highlight; look in the story.
     document
-      .querySelector(`mark[data-highlight-id="${CSS.escape(highlightId)}"]`)
+      .getElementById("story-headline")
+      ?.closest("article")
+      ?.querySelector(`mark[data-highlight-id="${CSS.escape(highlightId)}"]`)
       ?.scrollIntoView({ block: "center" });
   }
 </script>

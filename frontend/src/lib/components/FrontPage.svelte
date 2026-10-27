@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { CreateHighlightRequest, Highlight } from "$lib/api";
+  import HighlightPassage from "$lib/components/HighlightPassage.svelte";
   import { renderMarkdown } from "$lib/edition/markdown";
   import {
     describeReleaseDay,
@@ -11,17 +13,24 @@
     stories,
     lead,
     undoTitle = null,
+    highlights = [],
     onOpen,
     onRead,
     onUndo,
+    onHighlight,
+    onRemoveHighlight,
   }: {
     /** Unread stories in this section, newest first. */
     stories: Story[];
     lead: Story;
     undoTitle?: string | null;
+    /** The lead's highlights; its standfirst and glance can be highlighted. */
+    highlights?: Highlight[];
     onOpen: (storyId: string) => void;
     onRead: () => void;
     onUndo: () => void;
+    onHighlight?: (draft: CreateHighlightRequest) => void;
+    onRemoveHighlight?: (highlightId: string) => void;
   } = $props();
 
   const layout = $derived(layOutFrontPage(stories, lead));
@@ -44,47 +53,53 @@
 -->
 <div class="front-page">
   <div class="top">
-    <section class="lead print-in" aria-labelledby="front-lead-headline">
-      <p class="label channel">{lead.channelName}</p>
-      <h2 id="front-lead-headline" class="lead-headline">
-        <button type="button" onclick={() => onOpen(lead.id)}>
-          {lead.title}
-        </button>
-      </h2>
-      {#if leadParts.standfirst}
-        <p class="lead-standfirst">{leadParts.standfirst}</p>
-      {/if}
-      {#if glanceHtml}
-        <section class="lead-glance" aria-labelledby="front-glance-heading">
-          <h3 id="front-glance-heading" class="label">At a glance</h3>
-          <div class="lead-glance-list">{@html glanceHtml}</div>
-        </section>
-      {/if}
-      <div class="actions">
-        <button type="button" class="press" onclick={() => onOpen(lead.id)}>
-          Read the story
-        </button>
-        <button
-          type="button"
-          class="text-button"
-          onclick={onRead}
-          title="Mark as read (R)"
-        >
-          Mark as read
-        </button>
-        {#if undoTitle}
-          <button
-            type="button"
-            class="text-button"
-            onclick={onUndo}
-            title="Undo (U)"
-            aria-label={`Undo: mark "${undoTitle}" unread`}
-          >
-            Undo
-          </button>
-        {/if}
-      </div>
-    </section>
+    {#key lead.id}
+      <section class="lead print-in" aria-labelledby="front-lead-headline">
+        <HighlightPassage {highlights} {onHighlight} {onRemoveHighlight}>
+          <p class="label channel" data-passage-skip>{lead.channelName}</p>
+          <h2 id="front-lead-headline" class="lead-headline" data-passage-skip>
+            <button type="button" onclick={() => onOpen(lead.id)}>
+              {lead.title}
+            </button>
+          </h2>
+          {#if leadParts.standfirst}
+            <p class="lead-standfirst">{leadParts.standfirst}</p>
+          {/if}
+          {#if glanceHtml}
+            <section class="lead-glance" aria-labelledby="front-glance-heading">
+              <h3 id="front-glance-heading" class="label" data-passage-skip>
+                At a glance
+              </h3>
+              <div class="lead-glance-list">{@html glanceHtml}</div>
+            </section>
+          {/if}
+          <div class="actions" data-passage-skip>
+            <button type="button" class="press" onclick={() => onOpen(lead.id)}>
+              Read the story
+            </button>
+            <button
+              type="button"
+              class="text-button"
+              onclick={onRead}
+              title="Mark as read (R)"
+            >
+              Mark as read
+            </button>
+            {#if undoTitle}
+              <button
+                type="button"
+                class="text-button"
+                onclick={onUndo}
+                title="Undo (U)"
+                aria-label={`Undo: mark "${undoTitle}" unread`}
+              >
+                Undo
+              </button>
+            {/if}
+          </div>
+        </HighlightPassage>
+      </section>
+    {/key}
 
     {#if layout.beside.length > 0}
       <ol class="beside" aria-label="Next in this edition">
