@@ -5,7 +5,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     db::QueueFilter,
@@ -19,8 +19,9 @@ const DEFAULT_READ_CACHE_TTL: Duration = Duration::from_secs(10);
 const SEARCH_STATUS_CACHE_TTL: Duration = Duration::from_secs(30);
 const VIDEOS_CACHE_TTL: Duration = Duration::from_secs(600);
 const VIDEO_SUGGESTION_CACHE_TTL: Duration = Duration::from_secs(600);
-/// Read states change only through `put_user_video_state`, which updates this
-/// cache in place; the TTL only bounds staleness from other writers.
+/// Read states change only through `put_user_video_state`. A fill merges any
+/// write that arrived while the map was loading, so that write stays visible
+/// for the rest of this TTL.
 const USER_VIDEO_STATES_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 /// Maximum number of entries to keep in the cache.
 /// Prevents unbounded memory growth within Cloud Run's 512Mi limit.
@@ -38,6 +39,9 @@ pub struct SuggestedVideo {
 pub struct ReadCache {
     ttl: Duration,
     entries: Arc<RwLock<HashMap<ReadCacheKey, CacheEntry>>>,
+    /// Mark-read writes that arrived before that reader's state map was cached.
+    /// Guarded together with `entries` by locking this mutex first.
+    pending_user_video_states: Arc<Mutex<HashMap<String, HashMap<String, UserVideoState>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +126,7 @@ impl ReadCache {
         Self {
             ttl,
             entries: Arc::new(RwLock::new(HashMap::new())),
+            pending_user_video_states: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -287,25 +292,67 @@ impl ReadCache {
         user_id: String,
         states: HashMap<String, UserVideoState>,
     ) {
-        self.set_typed_with_ttl(
-            ReadCacheKey::UserVideoStates(user_id),
-            states,
-            ReadCacheValue::UserVideoStates,
-            USER_VIDEO_STATES_CACHE_TTL,
-        )
-        .await;
+        self.publish_user_video_states(user_id, states).await;
     }
 
-    /// Keeps a cached state map in step with a write. No-op when not cached.
-    pub async fn record_user_video_state(&self, user_id: &str, state: &UserVideoState) {
+    /// Installs a freshly loaded state map without hiding a mark-read that
+    /// landed while the load was in flight. A second fill keeps the map
+    /// already published, including writes applied after that first fill.
+    pub async fn publish_user_video_states(
+        &self,
+        user_id: String,
+        mut loaded: HashMap<String, UserVideoState>,
+    ) -> HashMap<String, UserVideoState> {
+        let mut pending = self.pending_user_video_states.lock().await;
         let mut entries = self.entries.write().await;
+        let key = ReadCacheKey::UserVideoStates(user_id.clone());
+        if let Some(states) = Self::fresh_user_video_states(entries.get(&key)) {
+            let mut states = states.clone();
+            if let Some(writes) = pending.remove(&user_id) {
+                for state in writes.into_values() {
+                    Self::merge_user_video_state(&mut states, state);
+                }
+                if let Some(CacheEntry {
+                    value: ReadCacheValue::UserVideoStates(cached),
+                    ..
+                }) = entries.get_mut(&key)
+                {
+                    *cached = states.clone();
+                }
+            }
+            return states;
+        }
+
+        if let Some(writes) = pending.remove(&user_id) {
+            for state in writes.into_values() {
+                Self::merge_user_video_state(&mut loaded, state);
+            }
+        }
+        if !Self::remember_user_video_states(&mut entries, &key, loaded.clone()) {
+            pending.insert(user_id, loaded.clone());
+        }
+        loaded
+    }
+
+    /// Keeps a cached state map in step with a write. When the map is not
+    /// cached yet, remembers the write so the in-flight fill cannot drop it.
+    pub async fn record_user_video_state(&self, user_id: &str, state: &UserVideoState) {
+        let mut pending = self.pending_user_video_states.lock().await;
+        let mut entries = self.entries.write().await;
+        let key = ReadCacheKey::UserVideoStates(user_id.to_string());
         if let Some(CacheEntry {
             value: ReadCacheValue::UserVideoStates(states),
-            ..
-        }) = entries.get_mut(&ReadCacheKey::UserVideoStates(user_id.to_string()))
+            expires_at,
+        }) = entries.get_mut(&key)
+            && *expires_at > Instant::now()
         {
-            states.insert(state.video_id.clone(), state.clone());
+            Self::merge_user_video_state(states, state.clone());
+            return;
         }
+        Self::merge_user_video_state(
+            pending.entry(user_id.to_string()).or_default(),
+            state.clone(),
+        );
     }
 
     pub async fn clear(&self) {
@@ -350,6 +397,51 @@ impl ReadCache {
                     | ReadCacheKey::Videos
             )
         });
+    }
+
+    fn fresh_user_video_states(
+        entry: Option<&CacheEntry>,
+    ) -> Option<&HashMap<String, UserVideoState>> {
+        let entry = entry?;
+        if entry.expires_at <= Instant::now() {
+            return None;
+        }
+        match &entry.value {
+            ReadCacheValue::UserVideoStates(states) => Some(states),
+            _ => None,
+        }
+    }
+
+    /// Keeps the newer write. Equal timestamps keep `state`, the write that just arrived.
+    fn merge_user_video_state(states: &mut HashMap<String, UserVideoState>, state: UserVideoState) {
+        if states
+            .get(&state.video_id)
+            .is_some_and(|existing| existing.updated_at > state.updated_at)
+        {
+            return;
+        }
+        states.insert(state.video_id.clone(), state);
+    }
+
+    fn remember_user_video_states(
+        entries: &mut HashMap<ReadCacheKey, CacheEntry>,
+        key: &ReadCacheKey,
+        states: HashMap<String, UserVideoState>,
+    ) -> bool {
+        if !entries.contains_key(key) && entries.len() >= MAX_CACHE_SIZE {
+            ReadCache::evict_expired(entries);
+        }
+        if !entries.contains_key(key) && entries.len() >= MAX_CACHE_SIZE {
+            return false;
+        }
+        entries.insert(
+            key.clone(),
+            CacheEntry {
+                expires_at: Instant::now() + USER_VIDEO_STATES_CACHE_TTL,
+                value: ReadCacheValue::UserVideoStates(states),
+            },
+        );
+        true
     }
 
     fn evict_expired(entries: &mut HashMap<ReadCacheKey, CacheEntry>) {
