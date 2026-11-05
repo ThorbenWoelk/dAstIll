@@ -48,7 +48,7 @@ pub enum ProviderAdapterError {
 impl From<YouTubeError> for ProviderAdapterError {
     fn from(value: YouTubeError) -> Self {
         match value {
-            YouTubeError::InvalidInput => {
+            YouTubeError::InvalidInput | YouTubeError::NotYouTubeUrl => {
                 Self::InvalidInput("youtube input was invalid".to_string())
             }
             other => Self::Upstream(other.to_string()),
