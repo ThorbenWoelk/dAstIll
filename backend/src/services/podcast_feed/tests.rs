@@ -1,7 +1,7 @@
 use super::{
     PodcastFeedService, build_podcast_resolved_source, build_podcast_sync_batch,
     caption_payload_to_text, item_transcript_references, json_transcript_to_text,
-    transcript_payload_to_text,
+    podcast_episode_item_id, podcast_episode_legacy_item_id, transcript_payload_to_text,
 };
 use crate::models::{ContentItemKind, ContentSourceKind, MediaAssetKind, ProviderKind};
 
@@ -131,4 +131,81 @@ fn transcript_payload_uses_actual_transcript_formats_not_description() {
 #[test]
 fn service_is_constructible() {
     let _service = PodcastFeedService::new();
+}
+
+#[test]
+fn episode_ids_distinguish_guids_that_normalize_identically() {
+    let slash_guid = "https://example.com/ep/1";
+    let trailing_slash_guid = "https://example.com/ep/1/";
+    let dotted_guid = "ep.1";
+    let dashed_guid = "ep-1";
+
+    assert_eq!(
+        podcast_episode_legacy_item_id(slash_guid),
+        podcast_episode_legacy_item_id(trailing_slash_guid)
+    );
+    assert_eq!(
+        podcast_episode_legacy_item_id(dotted_guid),
+        podcast_episode_legacy_item_id(dashed_guid)
+    );
+
+    assert_ne!(
+        podcast_episode_item_id(slash_guid),
+        podcast_episode_item_id(trailing_slash_guid)
+    );
+    assert_ne!(
+        podcast_episode_item_id(dotted_guid),
+        podcast_episode_item_id(dashed_guid)
+    );
+    assert!(
+        podcast_episode_item_id(slash_guid)
+            .starts_with("podcast:episode:https-example-com-ep-1:")
+    );
+    assert_eq!(
+        podcast_episode_legacy_item_id("episode-1"),
+        "podcast:episode:episode-1"
+    );
+}
+
+#[test]
+fn sync_batch_keeps_distinct_rows_for_normalized_guid_collisions() {
+    let feed = rss::Channel::read_from(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Collision Podcast</title>
+            <link>https://example.com/podcast</link>
+            <description>Guids that collapse under lossy normalization</description>
+            <item>
+              <title>Slash Episode</title>
+              <guid>https://example.com/ep/1</guid>
+              <pubDate>Tue, 07 Jan 2025 10:00:00 GMT</pubDate>
+              <enclosure url="https://example.com/a.mp3" length="1" type="audio/mpeg" />
+            </item>
+            <item>
+              <title>Trailing Slash Episode</title>
+              <guid>https://example.com/ep/1/</guid>
+              <pubDate>Tue, 07 Jan 2025 11:00:00 GMT</pubDate>
+              <enclosure url="https://example.com/b.mp3" length="1" type="audio/mpeg" />
+            </item>
+          </channel>
+        </rss>"#
+            .as_bytes(),
+    )
+    .expect("rss should parse");
+
+    let resolved = build_podcast_resolved_source("https://example.com/feed.xml", &feed);
+    let batch = build_podcast_sync_batch(&resolved.source, &feed);
+
+    assert_eq!(batch.items.len(), 2);
+    assert_ne!(batch.items[0].id, batch.items[1].id);
+    assert_eq!(
+        batch.items[0].id,
+        podcast_episode_item_id("https://example.com/ep/1")
+    );
+    assert_eq!(
+        batch.items[1].id,
+        podcast_episode_item_id("https://example.com/ep/1/")
+    );
+    assert_ne!(batch.media_assets[0].id, batch.media_assets[1].id);
 }
