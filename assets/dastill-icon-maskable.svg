@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="dAstIll icon">
+  <!-- Android masks this icon to a circle or squircle. The paper fills the
+       whole square; the artwork shrinks to 84% so it stays inside the
+       maskable safe zone (a centered circle 80% of the icon wide). -->
+  <rect width="512" height="512" fill="#f1ece1" />
+  <g transform="translate(256 256) scale(0.84) translate(-256 -256)">
+    <!-- Play button in kicker red -->
+    <path d="M 200 96 L 366 192 L 200 288 Z" fill="#a23b2c" />
+    <!-- Masthead rule -->
+    <rect x="112" y="314" width="288" height="14" fill="#171513" />
+    <!-- Summary lines -->
+    <rect x="112" y="356" width="288" height="18" fill="#57524a" />
+    <rect x="112" y="400" width="192" height="18" fill="#57524a" />
+  </g>
+</svg>

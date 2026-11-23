@@ -79,6 +79,7 @@ Current set: `CheckIcon`, `RefreshIcon`, `ExternalLinkIcon`, `HighlightIcon`. Re
 Source: [`assets/dastill-icon.svg`](./assets/dastill-icon.svg). A kicker-red play button over a heavy ink rule and two `--ink-soft` summary lines, on a square `--paper` sheet. Sharp corners, no circle, no gradient. The platform rounds the corners where it wants to.
 
 - Favicons (16 and 32px) drop the summary lines and keep only the play button and the rule, so they stay readable.
+- Android home screens crop app icons to a circle or squircle. The web manifest therefore also lists maskable icons (`frontend/static/icon-maskable-*.png`) from [`assets/dastill-icon-maskable.svg`](./assets/dastill-icon-maskable.svg): the same sheet with the artwork at 84%, inside the safe zone. Keep the maskable entries. Without them Android shrinks the icon onto a white plate.
 - `frontend/static/icon-512.png` feeds [`scripts/sync_tauri_icons.sh`](./scripts/sync_tauri_icons.sh) for the desktop and Android icons.
 
 ---
