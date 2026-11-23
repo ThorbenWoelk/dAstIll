@@ -10,6 +10,7 @@ locals {
 }
 
 resource "google_cloud_run_v2_service" "backend" {
+  count               = var.compute_enabled ? 1 : 0
   provider            = google-beta
   name                = "${var.app_name}-backend"
   project             = var.project_id
@@ -55,6 +56,7 @@ resource "google_cloud_run_v2_service" "backend" {
 }
 
 resource "google_cloud_run_v2_service" "asr" {
+  count               = var.compute_enabled ? 1 : 0
   provider            = google-beta
   name                = "${var.app_name}-asr"
   project             = var.project_id
@@ -100,25 +102,47 @@ resource "google_cloud_run_v2_service" "asr" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "backend_public" {
+  count    = var.compute_enabled ? 1 : 0
   project  = var.project_id
-  location = google_cloud_run_v2_service.backend.location
-  name     = google_cloud_run_v2_service.backend.name
+  location = google_cloud_run_v2_service.backend[0].location
+  name     = google_cloud_run_v2_service.backend[0].name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
 
 resource "google_cloud_run_v2_service_iam_member" "asr_backend_invoker" {
+  count    = var.compute_enabled ? 1 : 0
   project  = var.project_id
-  location = google_cloud_run_v2_service.asr.location
-  name     = google_cloud_run_v2_service.asr.name
+  location = google_cloud_run_v2_service.asr[0].location
+  name     = google_cloud_run_v2_service.asr[0].name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.backend_sa.email}"
 }
 
 output "backend_url" {
-  value = google_cloud_run_v2_service.backend.uri
+  value = one(google_cloud_run_v2_service.backend[*].uri)
 }
 
 output "asr_url" {
-  value = google_cloud_run_v2_service.asr.uri
+  value = one(google_cloud_run_v2_service.asr[*].uri)
+}
+
+moved {
+  from = google_cloud_run_v2_service.backend
+  to   = google_cloud_run_v2_service.backend[0]
+}
+
+moved {
+  from = google_cloud_run_v2_service.asr
+  to   = google_cloud_run_v2_service.asr[0]
+}
+
+moved {
+  from = google_cloud_run_v2_service_iam_member.backend_public
+  to   = google_cloud_run_v2_service_iam_member.backend_public[0]
+}
+
+moved {
+  from = google_cloud_run_v2_service_iam_member.asr_backend_invoker
+  to   = google_cloud_run_v2_service_iam_member.asr_backend_invoker[0]
 }

@@ -168,6 +168,26 @@ When release maintenance mode is enabled, the validation workflow skips the back
 backend still deploys. The reader frontend has no separate maintenance page, so the mode does not
 change what readers see.
 
+## Shutdown
+
+dAstIll is shut down to stop spend. The Terraform variable `compute_enabled` defaults to `false`,
+which removes:
+
+- the backend Cloud Run service
+- the podcast ASR Cloud Run service
+- the catch-up Cloud Scheduler job
+
+The Release workflow no longer runs on push to `main`. It only runs when started by hand.
+
+These stay: the GCS data bucket, Secret Manager secrets, Artifact Registry images, service
+accounts, and Firebase Hosting. The hosted frontend loads but cannot reach a backend.
+
+To bring the app back:
+
+1. Set `compute_enabled` to `true` in `terraform/variables.tf` and push. Infra applies it.
+2. Restore the `push` trigger in `.github/workflows/deploy.yml`.
+3. Run the Release workflow by hand so it deploys the backend, ASR, and frontend.
+
 ## Backend Runtime Boundary
 
 The backend keeps a local libSQL cache/index and in-process workers. The production instance cap and

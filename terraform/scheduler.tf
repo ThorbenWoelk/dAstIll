@@ -29,6 +29,7 @@ resource "google_service_account_iam_member" "sa_user_scheduler" {
 }
 
 resource "google_cloud_scheduler_job" "catch_up" {
+  count            = var.compute_enabled ? 1 : 0
   project          = var.project_id
   region           = var.region
   name             = "${var.app_name}-catch-up"
@@ -43,7 +44,7 @@ resource "google_cloud_scheduler_job" "catch_up" {
 
   http_target {
     http_method = "POST"
-    uri         = "${google_cloud_run_v2_service.backend.uri}/api/internal/catch-up"
+    uri         = "${google_cloud_run_v2_service.backend[0].uri}/api/internal/catch-up"
 
     oidc_token {
       service_account_email = google_service_account.scheduler_sa.email
@@ -55,6 +56,11 @@ resource "google_cloud_scheduler_job" "catch_up" {
     google_project_service.services,
     google_service_account_iam_member.sa_user_scheduler,
   ]
+}
+
+moved {
+  from = google_cloud_scheduler_job.catch_up
+  to   = google_cloud_scheduler_job.catch_up[0]
 }
 
 output "scheduler_sa_email" {

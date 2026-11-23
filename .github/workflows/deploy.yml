@@ -7,9 +7,10 @@ run-name: >-
       || format('Release: {0}', github.event.head_commit.message || 'unknown message')
   }}
 
+# Push deploys are off while dAstIll is shut down (terraform var compute_enabled = false).
+# To bring the app back: set compute_enabled to true, let Infra apply, restore the push
+# trigger below, then run this workflow.
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
 
 concurrency:

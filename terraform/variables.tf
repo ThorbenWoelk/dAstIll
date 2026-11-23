@@ -163,3 +163,9 @@ variable "github_wif_provider_id" {
   default     = "github-provider-v1"
   description = "Workload Identity Provider ID used by GitHub Actions."
 }
+
+variable "compute_enabled" {
+  type        = bool
+  default     = false
+  description = "Run the backend and ASR Cloud Run services and the catch-up scheduler. Off to stop spend; data, secrets and hosting stay. Turn on and run the Release workflow to bring the app back."
+}
